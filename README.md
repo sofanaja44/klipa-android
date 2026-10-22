@@ -4,7 +4,45 @@ A native Android video editor. Kotlin, Jetpack Compose, and AndroidX Media3
 (ExoPlayer for preview, Transformer for export). The editing engine is ported
 from [ReaCut](https://github.com/Xiangyu-CAS/rea-capcut) (MIT).
 
-**Status:** project scaffold. Modules build, no features yet.
+**Status:** the editing engine is ported and tested on the JVM (milestones 1–2:
+data model, edit operations, project validation and JSON load/save). No UI,
+preview or export yet.
+
+## Roadmap
+
+1. ~~Core model and edit operations, with JVM unit tests~~
+2. ~~Project load/save (ReaCut JSON shape) and validation~~
+3. Compose timeline (tracks, clips, playhead, zoom, selection) with undo and transactions
+4. Preview: ExoPlayer for the base track, then GL compositing of layers
+5. Export with Media3 Transformer: one track, then multi-track, effects and text
+6. Custom GL shaders: chroma key, mask, blur, temperature
+
+## Engine
+
+What `:core:model` and `:core:edit` provide, ported from ReaCut's
+`src/core/{types,model,timelineEdits}.ts`:
+
+- **Model** — immutable `Project`/`Track`/`Clip`/`MediaAsset` data classes that
+  serialize to the same JSON as ReaCut projects (`version: 1`).
+- **Clip edits** — `splitClip`, `trimClip` (clamped to source handles),
+  `changeClipSpeed`. Keyframe curves and fade envelopes survive cuts exactly:
+  sliced `easeInOut` segments get a narrowed easing window, cut pieces keep a
+  shifted fade window.
+- **Timeline edits** — `placeAsset` (insert/ripple, overwrite, overlay),
+  `moveLinked`, `trimLinked`, `splitLinked`, `slipLinked`, `speedLinked`,
+  `detachLinkedAudio`, `unlinkClips`. Linked clips (a video and its detached
+  audio) always edit together, and nothing on a locked track ever changes.
+- **Evaluation** — `evaluateKeyframes` and `evaluateFade`, shared by preview
+  and export.
+- **Validation** — `ProjectJson.decode` checks untrusted files without
+  coercion (no quoted numbers, NaN, nulls or defaulted fields), with ReaCut's
+  bounds: fps ∈ {24, 25, 30, 50, 60}, 16–7680 px, speed 0.1–8, ≤400 keyframes
+  per clip, ≤24 h timeline.
+
+Every edit snaps to frame boundaries and returns a new `Project`, or the same
+instance when it does not apply, so undo history can store projects directly.
+ReaCut's test cases for these functions are ported to JUnit; its editor-store,
+assistant and transition cases come with the milestones that add those parts.
 
 ## Modules
 

@@ -16,6 +16,7 @@ kotlin {
 dependencies {
     api(project(":core:model"))
 
+    testImplementation(testFixtures(project(":core:model")))
     testImplementation(kotlin("test"))
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
