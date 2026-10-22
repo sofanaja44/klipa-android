@@ -4,9 +4,9 @@
 
 package com.example.klipa.core.media
 
-import androidx.annotation.OptIn
-import androidx.media3.common.util.UnstableApi
+import android.graphics.Matrix
 import android.util.Pair
+import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
@@ -15,11 +15,14 @@ import androidx.media3.common.VideoCompositorSettings
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.SpeedProvider
 import androidx.media3.common.util.Size
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.Brightness
 import androidx.media3.effect.Contrast
 import androidx.media3.effect.Crop
 import androidx.media3.effect.HslAdjustment
+import androidx.media3.effect.MatrixTransformation
 import androidx.media3.effect.Presentation
+import androidx.media3.effect.RgbMatrix
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.EditedMediaItemSequence
@@ -30,24 +33,48 @@ import com.example.klipa.core.model.KeyframeProperty
 import com.example.klipa.core.model.MediaAsset
 import com.example.klipa.core.model.MediaKind
 import com.example.klipa.core.model.Project
+import com.example.klipa.core.model.Transform
 import com.example.klipa.core.model.evaluateFade
 import com.example.klipa.core.model.evaluateKeyframe
 import com.example.klipa.core.model.evaluateKeyframes
+import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.sin
 
 // Builds the Media3 Composition for a project. Preview (CompositionPlayer) and export
 // (Transformer) both play this, so what you see is what renders.
 //
-// Per clip, decoding effects crop, color-correct and fit each frame to its "contain"
-// size in the project frame; per frame, the compositor places it (position, scale,
-// rotation, opacity and fades, with keyframes evaluated at that time).
+// Each clip is cropped, color-corrected and fitted inside the project frame; then, per
+// frame, it is placed (position, scale, rotation) and faded (opacity, fades), with
+// keyframes evaluated at that frame's time. Media3 passes effects and the compositor
+// composition-relative timestamps, so a clip's local time is the timestamp minus its
+// start.
+
+/** How video layers are combined. */
+enum class VideoLayering {
+    /**
+     * One video sequence through a single-input video graph, the configuration
+     * CompositionPlayer officially supports. Layers above the bottom one play their
+     * sound only. Placement and fades are per-clip effects.
+     */
+    BaseLayer,
+
+    /** Every video track is a compositor input; needs a multiple-input video graph. */
+    Layered,
+}
 
 /** A project's composition plus the plan it was built from. */
-class ProjectComposition(val composition: Composition, val plan: CompositionPlan)
+class ProjectComposition(val composition: Composition, val plan: CompositionPlan, val layering: VideoLayering)
 
-/** Returns null when nothing in the project has media to play. */
-fun buildComposition(project: Project): ProjectComposition? {
-    val plan = planComposition(project)
+/**
+ * Returns null when nothing in the project has media to play. With [allowLayering], a
+ * project with several video layers composites them all; otherwise only the bottom one
+ * is shown.
+ */
+fun buildComposition(project: Project, allowLayering: Boolean = true): ProjectComposition? {
+    var plan = planComposition(project)
+    val layering = if (allowLayering && plan.videoSequences.size > 1) VideoLayering.Layered else VideoLayering.BaseLayer
+    if (layering == VideoLayering.BaseLayer) plan = plan.baseLayerOnly()
     if (plan.isEmpty) return null
     val sequences = plan.sequences.map { sequence ->
         val trackTypes = buildSet {
@@ -60,18 +87,17 @@ fun buildComposition(project: Project): ProjectComposition? {
         for (segment in sequence.segments) {
             when (segment) {
                 is Segment.Gap -> builder.addGap(segment.durationUs)
-                is Segment.Item -> builder.addItem(editedItem(project, segment))
+                is Segment.Item -> builder.addItem(editedItem(project, segment, layering))
             }
         }
         builder.build()
     }
     val composition = Composition.Builder(sequences)
-        .setVideoCompositorSettings(ProjectCompositorSettings(project, plan))
-        .build()
-    return ProjectComposition(composition, plan)
+    if (layering == VideoLayering.Layered) composition.setVideoCompositorSettings(ProjectCompositorSettings(project, plan))
+    return ProjectComposition(composition.build(), plan, layering)
 }
 
-private fun editedItem(project: Project, item: Segment.Item): EditedMediaItem {
+private fun editedItem(project: Project, item: Segment.Item, layering: VideoLayering): EditedMediaItem {
     val clip = item.clip
     val asset = item.asset
     val mediaItem = MediaItem.Builder().setUri(asset.url)
@@ -88,20 +114,23 @@ private fun editedItem(project: Project, item: Segment.Item): EditedMediaItem {
     }
     val builder = EditedMediaItem.Builder(mediaItem.build())
         .setRemoveVideo(item.removeVideo)
-        .setRemoveAudio(item.removeAudio)
+        // Images need a frame rate; for video it caps the decoded rate at the project's.
+        .setFrameRate(project.fps)
     if (asset.kind == MediaKind.Image) {
-        builder.setDurationUs(item.durationUs).setFrameRate(project.fps)
+        builder.setDurationUs(item.durationUs)
     } else {
         // CompositionPlayer lays out the timeline before probing media, so it needs the
         // full source duration; clipping and speed are applied on top of it.
         builder.setDurationUs(secondsToUs(asset.duration))
         if (clip.speed != 1.0) builder.setSpeed(ConstantSpeed(clip.speed.toFloat()))
     }
-    val audio = if (item.removeAudio) emptyList() else listOfNotNull(gainProcessor(clip))
-    val video = if (item.removeVideo) emptyList() else videoEffects(project, clip, asset)
+    val audio = if (asset.carriesSoundForMix()) listOfNotNull(gainProcessor(clip, item.muted)) else emptyList()
+    val video = if (item.removeVideo) emptyList() else videoEffects(project, item, layering)
     if (audio.isNotEmpty() || video.isNotEmpty()) builder.setEffects(Effects(audio, video))
     return builder.build()
 }
+
+private fun MediaAsset.carriesSoundForMix(): Boolean = hasAudio && kind != MediaKind.Image
 
 private class ConstantSpeed(private val speed: Float) : SpeedProvider {
     override fun getSpeed(timeUs: Long): Float = speed
@@ -109,8 +138,9 @@ private class ConstantSpeed(private val speed: Float) : SpeedProvider {
     override fun getNextSpeedChangeTimeUs(timeUs: Long): Long = C.TIME_UNSET
 }
 
-/** Volume, volume keyframes and audio fades; null when the clip plays at unity gain. */
-private fun gainProcessor(clip: Clip): AudioProcessor? {
+/** Volume, volume keyframes and audio fades; silence when [muted]; null at unity gain. */
+private fun gainProcessor(clip: Clip, muted: Boolean): AudioProcessor? {
+    if (muted) return GainAudioProcessor { 0f }
     val animated = clip.keyframes.any { it.property == KeyframeProperty.Volume } ||
         clip.audioFadeIn > 0 || clip.audioFadeOut > 0 || clip.audioFadeWindow != null
     if (!animated && clip.volume == 1.0) return null
@@ -125,8 +155,9 @@ private fun gainProcessor(clip: Clip): AudioProcessor? {
     }
 }
 
-/** Crop, color and the fit to the project frame, in that order. */
-private fun videoEffects(project: Project, clip: Clip, asset: MediaAsset): List<Effect> = buildList {
+/** Crop, color, the fit to the project frame, and (for a base layer) placement and fades. */
+private fun videoEffects(project: Project, item: Segment.Item, layering: VideoLayering): List<Effect> = buildList {
+    val clip = item.clip
     clip.crop?.let { crop ->
         // Crop takes normalized device coordinates: x and y in -1..1, y pointing up.
         add(Crop((crop.x * 2 - 1).toFloat(), ((crop.x + crop.width) * 2 - 1).toFloat(), (1 - (crop.y + crop.height) * 2).toFloat(), (1 - crop.y * 2).toFloat()))
@@ -136,9 +167,62 @@ private fun videoEffects(project: Project, clip: Clip, asset: MediaAsset): List<
     // ReaCut contrast and saturation are multipliers around 1; Media3 takes offsets from 0.
     if (adjust.contrast != 1.0) add(Contrast((adjust.contrast - 1).toFloat().coerceIn(-1f, 1f)))
     if (adjust.saturation != 1.0) add(HslAdjustment.Builder().adjustSaturation(((adjust.saturation - 1) * 100).toFloat().coerceIn(-100f, 100f)).build())
-    fitSize(project, clip, asset)?.let { (width, height) ->
-        add(Presentation.createForWidthAndHeight(width, height, Presentation.LAYOUT_STRETCH_TO_FIT))
+    when (layering) {
+        VideoLayering.Layered -> fitSize(project, clip, item.asset)?.let { (width, height) ->
+            // The compositor places the fitted frame; its scale is the clip's own.
+            add(Presentation.createForWidthAndHeight(width, height, Presentation.LAYOUT_STRETCH_TO_FIT))
+        }
+        VideoLayering.BaseLayer -> {
+            // Fit inside a project-sized frame, then move and fade within it.
+            add(Presentation.createForWidthAndHeight(project.width, project.height, Presentation.LAYOUT_SCALE_TO_FIT))
+            if (hasMotion(clip)) {
+                add(MatrixTransformation { timeUs -> Matrix().apply { setValues(motionValues(project, evaluateKeyframes(clip, item.localSeconds(timeUs)).transform)) } })
+            }
+            if (hasFade(clip)) {
+                add(RgbMatrix { timeUs, _ -> brightnessScale(layerAlpha(clip, item.localSeconds(timeUs))) })
+            }
+        }
     }
+}
+
+/** Clip-local seconds for a composition timestamp, kept inside the clip. */
+private fun Segment.Item.localSeconds(timeUs: Long): Double =
+    ((timeUs - startUs) / 1_000_000.0).coerceIn(0.0, clip.duration)
+
+private val MotionProperties = setOf(KeyframeProperty.X, KeyframeProperty.Y, KeyframeProperty.Scale, KeyframeProperty.Rotation)
+
+private fun hasMotion(clip: Clip): Boolean = clip.transform.copy(opacity = 1.0) != Transform() ||
+    clip.keyframes.any { it.property in MotionProperties }
+
+private fun hasFade(clip: Clip): Boolean = clip.transform.opacity != 1.0 || clip.fadeIn > 0 || clip.fadeOut > 0 ||
+    clip.videoFadeWindow != null || clip.keyframes.any { it.property == KeyframeProperty.Opacity }
+
+/** Opacity times the video fade at clip-local [local] seconds, in 0..1. */
+internal fun layerAlpha(clip: Clip, local: Double): Float =
+    (evaluateKeyframes(clip, local).transform.opacity * evaluateFade(clip, local, FadeChannel.Video)).coerceIn(0.0, 1.0).toFloat()
+
+/** A 4×4 color matrix scaling RGB by [alpha]: a single layer fading to black. */
+private fun brightnessScale(alpha: Float): FloatArray =
+    floatArrayOf(alpha, 0f, 0f, 0f, 0f, alpha, 0f, 0f, 0f, 0f, alpha, 0f, 0f, 0f, 0f, 1f)
+
+/**
+ * [android.graphics.Matrix] values placing a project-sized frame by [t], in normalized
+ * device coordinates. ReaCut's transform works in project pixels about the center with y
+ * pointing down and rotation clockwise; mapping through NDC keeps rotation undistorted on
+ * non-square frames.
+ */
+internal fun motionValues(project: Project, t: Transform): FloatArray {
+    val sx = t.scale * if (t.flipX) -1 else 1
+    val sy = t.scale * if (t.flipY) -1 else 1
+    val radians = Math.toRadians(t.rotation)
+    val aspect = project.width.toDouble() / project.height
+    val c = cos(radians)
+    val s = sin(radians)
+    return floatArrayOf(
+        (c * sx).toFloat(), (s * sy / aspect).toFloat(), (2 * t.x / project.width).toFloat(),
+        (-s * sx * aspect).toFloat(), (c * sy).toFloat(), (-2 * t.y / project.height).toFloat(),
+        0f, 0f, 1f,
+    )
 }
 
 /**
@@ -165,20 +249,17 @@ internal class ProjectCompositorSettings(private val project: Project, plan: Com
 
     override fun getOverlaySettings(inputId: Int, presentationTimeUs: Long): OverlaySettings {
         val item = layers.getOrNull(inputId)?.itemAt(presentationTimeUs) ?: return Hidden
-        val local = (presentationTimeUs - item.startUs) / 1_000_000.0
-        return layerOverlay(project, item.clip, local)
+        return layerOverlay(project, item.clip, item.localSeconds(presentationTimeUs))
     }
 }
 
 /** The overlay for [clip] at clip-local [local] seconds. */
 internal fun layerOverlay(project: Project, clip: Clip, local: Double): OverlaySettings {
-    val evaluated = evaluateKeyframes(clip, local)
-    val t = evaluated.transform
-    val alpha = (t.opacity * evaluateFade(clip, local, FadeChannel.Video)).coerceIn(0.0, 1.0).toFloat()
+    val t = evaluateKeyframes(clip, local).transform
     // ReaCut offsets are project pixels from the center with y down; Media3 anchors are
     // normalized with y up, and its rotation is counter-clockwise.
     return LayerOverlay(
-        alpha = alpha,
+        alpha = layerAlpha(clip, local),
         anchorX = (2 * t.x / project.width).toFloat(),
         anchorY = (-2 * t.y / project.height).toFloat(),
         scaleX = (t.scale * if (t.flipX) -1 else 1).toFloat(),

@@ -20,4 +20,17 @@
     <string name="speed_title">Speed</string>
     <string name="speed_hint">The clip gets shorter or longer; linked sound follows.</string>
     <string name="importing">Importing media…</string>
+    <string name="action_more">More options</string>
+    <string name="action_details">Details</string>
+    <string name="action_copy">Copy</string>
+    <string name="diagnostics_title">Playback diagnostics</string>
+    <string name="diagnostics_hint">If playback misbehaves, copy this report and send it along with what you did.</string>
+    <string name="tool_edit_text">Edit</string>
+    <string name="tool_volume">Volume</string>
+    <string name="text_title">Text</string>
+    <string name="text_size">Size</string>
+    <string name="text_bold">Bold</string>
+    <string name="volume_title">Volume</string>
+    <string name="volume_mute">Mute</string>
+    <string name="volume_level">Level</string>
 </resources>

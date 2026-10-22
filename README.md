@@ -4,7 +4,7 @@ A native Android video editor. Kotlin, Jetpack Compose, and AndroidX Media3
 (ExoPlayer for preview, Transformer for export). The editing engine is ported
 from [ReaCut](https://github.com/Xiangyu-CAS/rea-capcut) (MIT).
 
-**Status:** milestones 1–4 (version 0.4.0). Import media, cut on a multi-track
+**Status:** milestones 1–4 (version 0.4.1). Import media, cut on a multi-track
 timeline with thumbnails and waveforms, and play the edit back in real time
 with sound. The project autosaves. Export is next.
 
@@ -16,15 +16,20 @@ with sound. The project autosaves. Export is next.
   to zoom, tap to select, drag a selected clip's edge to trim, long-press to
   move a clip in time or onto another track. Trims and moves snap to the
   playhead and clip edges; each drag is one undo step.
-- **Clip tools**: split at the playhead, speed (0.25×–4×), extract audio into a
-  linked clip, unlink, duplicate, delete, add text.
+- **Clip tools**: split at the playhead, speed (0.25×–4×), volume and mute,
+  extract audio into a linked clip, unlink, duplicate, delete; add text and edit
+  its words, size, color and weight. Each sheet session is one undo step.
 - **Tracks**: mute, hide, lock, reorder, delete from the track header menu.
-- **Real-time preview with sound**: the timeline plays through Media3's
-  `CompositionPlayer`. Every track is a layer with its position, scale,
-  rotation, opacity, fades and keyframes, plus crop, brightness, contrast,
-  saturation and speed; audio tracks are mixed with volume and fades. Scrubbing
-  seeks the player. If real-time preview fails on a device, the monitor falls
-  back to decoding still frames.
+- **Real-time preview with sound** through Media3's `CompositionPlayer`, set
+  up as in Media3's composition demo. With one video track it uses the
+  single-input path Media3 officially supports; clips are placed, scaled,
+  rotated and faded by per-clip effects. Several video tracks are composited
+  (a Media3 path still in development); if that fails on a device the preview
+  falls back to the bottom track, and then to decoded still frames. Crop,
+  brightness, contrast, saturation, speed, volume and fades apply; scrubbing
+  seeks the player.
+- **Playback diagnostics** (⋮ menu): player mode, state, composition layout,
+  recent errors and the device, ready to copy into a bug report.
 - **Timeline thumbnails and waveforms**, decoded in the background.
 - **Undo/redo** (150 steps) and **autosave** to app storage in ReaCut's JSON
   format.

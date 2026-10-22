@@ -8,82 +8,111 @@ import android.graphics.ImageDecoder
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
+import android.os.Process
 import android.util.LruCache
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import com.example.klipa.core.model.MediaAsset
 import com.example.klipa.core.model.MediaKind
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.withContext
 
 /** Still frames of media, for the program monitor and thumbnails. */
 interface FrameSource {
-    /** The frame shown at [sourceTime] seconds into [asset], at most [maxSize] px on its long side. */
-    suspend fun frame(asset: MediaAsset, sourceTime: Double, maxSize: Int): ImageBitmap?
-
     /**
-     * A quick thumbnail near [sourceTime] for the timeline: the nearest key frame is
-     * close enough there, and much faster to decode.
+     * The frame shown at [sourceTime] seconds into [asset], at most [maxSize] px on its
+     * long side. With [exact] false the nearest key frame is returned instead, which is
+     * far quicker to decode and fine while playing.
      */
-    suspend fun thumbnail(asset: MediaAsset, sourceTime: Double, maxSize: Int): ImageBitmap? = frame(asset, sourceTime, maxSize)
+    suspend fun frame(asset: MediaAsset, sourceTime: Double, maxSize: Int, exact: Boolean = true): ImageBitmap?
+
+    /** A quick thumbnail near [sourceTime] for the timeline. */
+    suspend fun thumbnail(asset: MediaAsset, sourceTime: Double, maxSize: Int): ImageBitmap? = frame(asset, sourceTime, maxSize, exact = false)
 }
 
 /**
  * Decodes frames with [MediaMetadataRetriever] and stills with the platform decoders.
- * Frame-accurate but not real-time: used for timeline thumbnails and as the monitor's
- * fallback when real-time preview is unavailable.
+ * Monitor frames and timeline thumbnails decode on separate threads, so a long filmstrip
+ * never holds up the frame under the playhead.
  */
 class MediaFrameSource(context: Context) : FrameSource {
     private val resolver: ContentResolver = context.applicationContext.contentResolver
     private val appContext = context.applicationContext
 
-    // MediaMetadataRetriever is not thread-safe; one worker thread serializes all decoding.
-    private val worker = Executors.newSingleThreadExecutor { Thread(it, "klipa-frames") }
-    private val decoder = worker.asCoroutineDispatcher()
-
-    private val retrievers = object : LinkedHashMap<String, MediaMetadataRetriever>(4, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, MediaMetadataRetriever>): Boolean {
-            if (size <= MAX_RETRIEVERS) return false
-            eldest.value.release()
-            return true
-        }
-    }
-
     private val stills = object : LruCache<String, ImageBitmap>(MAX_STILL_BYTES) {
         override fun sizeOf(key: String, value: ImageBitmap) = value.width * value.height * 4
     }
 
-    override suspend fun frame(asset: MediaAsset, sourceTime: Double, maxSize: Int): ImageBitmap? =
-        decode(asset, sourceTime, maxSize, MediaMetadataRetriever.OPTION_CLOSEST)
+    private val monitor = DecoderLane("klipa-frames", Process.THREAD_PRIORITY_DISPLAY)
+    private val thumbnails = DecoderLane("klipa-thumbnails", Process.THREAD_PRIORITY_BACKGROUND)
+
+    override suspend fun frame(asset: MediaAsset, sourceTime: Double, maxSize: Int, exact: Boolean): ImageBitmap? =
+        monitor.decode(asset, sourceTime, maxSize, if (exact) MediaMetadataRetriever.OPTION_CLOSEST else MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
 
     override suspend fun thumbnail(asset: MediaAsset, sourceTime: Double, maxSize: Int): ImageBitmap? =
-        decode(asset, sourceTime, maxSize, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+        thumbnails.decode(asset, sourceTime, maxSize, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
 
-    private suspend fun decode(asset: MediaAsset, sourceTime: Double, maxSize: Int, option: Int): ImageBitmap? = withContext(decoder) {
-        try {
-            when (asset.kind) {
-                MediaKind.Video -> videoFrame(asset, sourceTime, maxSize, option)
-                MediaKind.Image -> still(asset, maxSize)
-                MediaKind.Audio -> null
-            }
-        } catch (e: Exception) {
-            // Missing permission, deleted file or an undecodable frame: show nothing.
-            null
-        }
+    /** Frees the decoders and stops the workers. Call once, when the owner is destroyed. */
+    fun release() {
+        monitor.release()
+        thumbnails.release()
+        stills.evictAll()
     }
 
-    private fun videoFrame(asset: MediaAsset, sourceTime: Double, maxSize: Int, option: Int): ImageBitmap? {
-        val retriever = retrievers.getOrPut(asset.url) {
-            MediaMetadataRetriever().apply { setDataSource(appContext, Uri.parse(asset.url)) }
+    /**
+     * One decoding thread with its own retrievers: MediaMetadataRetriever is not
+     * thread-safe, so each instance stays on the thread that created it.
+     */
+    private inner class DecoderLane(name: String, priority: Int) {
+        private val worker: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
+            Thread({ Process.setThreadPriority(priority); runnable.run() }, name)
         }
-        val micros = (sourceTime.coerceAtLeast(0.0) * 1_000_000).toLong()
-        val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            retriever.getScaledFrameAtTime(micros, option, maxSize, maxSize)
-        } else {
-            retriever.getFrameAtTime(micros, option)?.let { scaleDown(it, maxSize) }
+        private val dispatcher: CoroutineDispatcher = worker.asCoroutineDispatcher()
+
+        private val retrievers = object : LinkedHashMap<String, MediaMetadataRetriever>(4, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, MediaMetadataRetriever>): Boolean {
+                if (size <= MAX_RETRIEVERS) return false
+                eldest.value.release()
+                return true
+            }
         }
-        return bitmap?.asImageBitmap()
+
+        suspend fun decode(asset: MediaAsset, sourceTime: Double, maxSize: Int, option: Int): ImageBitmap? = withContext(dispatcher) {
+            try {
+                when (asset.kind) {
+                    MediaKind.Video -> videoFrame(asset, sourceTime, maxSize, option)
+                    MediaKind.Image -> still(asset, maxSize)
+                    MediaKind.Audio -> null
+                }
+            } catch (e: Exception) {
+                // Missing permission, deleted file or an undecodable frame: show nothing.
+                null
+            }
+        }
+
+        private fun videoFrame(asset: MediaAsset, sourceTime: Double, maxSize: Int, option: Int): ImageBitmap? {
+            val retriever = retrievers.getOrPut(asset.url) {
+                MediaMetadataRetriever().apply { setDataSource(appContext, Uri.parse(asset.url)) }
+            }
+            val micros = (sourceTime.coerceAtLeast(0.0) * 1_000_000).toLong()
+            val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                retriever.getScaledFrameAtTime(micros, option, maxSize, maxSize)
+            } else {
+                retriever.getFrameAtTime(micros, option)?.let { scaleDown(it, maxSize) }
+            }
+            return bitmap?.asImageBitmap()
+        }
+
+        fun release() {
+            worker.execute {
+                retrievers.values.forEach { it.release() }
+                retrievers.clear()
+            }
+            worker.shutdown()
+        }
     }
 
     private fun still(asset: MediaAsset, maxSize: Int): ImageBitmap? {
@@ -114,16 +143,6 @@ class MediaFrameSource(context: Context) : FrameSource {
         if (longSide <= maxSize) return bitmap
         val ratio = maxSize.toFloat() / longSide
         return Bitmap.createScaledBitmap(bitmap, (bitmap.width * ratio).toInt().coerceAtLeast(1), (bitmap.height * ratio).toInt().coerceAtLeast(1), true)
-    }
-
-    /** Frees the decoders and stops the worker. Call once, when the owner is destroyed. */
-    fun release() {
-        worker.execute {
-            retrievers.values.forEach { it.release() }
-            retrievers.clear()
-            stills.evictAll()
-        }
-        worker.shutdown()
     }
 
     private companion object {

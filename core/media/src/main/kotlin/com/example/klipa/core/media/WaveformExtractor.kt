@@ -11,7 +11,9 @@ import java.nio.ByteOrder
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.roundToInt
-import kotlinx.coroutines.Dispatchers
+import android.os.Process
+import java.util.concurrent.Executors
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
@@ -22,8 +24,13 @@ import kotlinx.coroutines.withContext
 class WaveformExtractor(context: Context) {
     private val context = context.applicationContext
 
+    // A low-priority thread of its own: waveforms must never slow down playback.
+    private val worker = Executors.newSingleThreadExecutor { runnable ->
+        Thread({ Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND); runnable.run() }, "klipa-waveforms")
+    }.asCoroutineDispatcher()
+
     /** The waveform, or null if the file has no decodable audio. Cancellable. */
-    suspend fun extract(asset: MediaAsset): List<Double>? = withContext(Dispatchers.Default) {
+    suspend fun extract(asset: MediaAsset): List<Double>? = withContext(worker) {
         if (!asset.hasAudio || asset.duration <= 0) return@withContext null
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null

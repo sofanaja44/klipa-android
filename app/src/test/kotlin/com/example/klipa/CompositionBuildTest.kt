@@ -9,9 +9,11 @@ import androidx.media3.common.util.ExperimentalApi
 import androidx.media3.common.util.UnstableApi
 import android.os.Looper
 import androidx.media3.common.C
-import androidx.media3.effect.MultipleInputVideoGraph
-import androidx.media3.transformer.CompositionPlayer
+import com.example.klipa.core.media.ProjectComposition
+import com.example.klipa.core.media.VideoLayering
 import com.example.klipa.core.media.buildComposition
+import com.example.klipa.core.model.Transform
+import com.example.klipa.feature.preview.newCompositionPlayer
 import com.example.klipa.core.model.MediaKind
 import com.example.klipa.core.model.Project
 import com.example.klipa.core.model.createClip
@@ -19,6 +21,7 @@ import com.example.klipa.core.model.createProject
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -41,41 +44,56 @@ class CompositionBuildTest {
     }
 
     @Test
-    fun `the sample edit builds into layered video and mixed audio sequences`() {
+    fun `a single video track plays through the default single-input graph`() {
         val built = assertNotNull(buildComposition(sampleProject()))
+        assertEquals(VideoLayering.BaseLayer, built.layering)
         val sequences = built.composition.sequences
         assertEquals(3, sequences.size)
-        // The main video track carries the unextracted shot's sound too.
+        // The main video track carries its shots' sound; the extracted one plays at zero gain.
         assertEquals(setOf(C.TRACK_TYPE_VIDEO, C.TRACK_TYPE_AUDIO), sequences[0].trackTypes)
         assertEquals(setOf(C.TRACK_TYPE_AUDIO), sequences[1].trackTypes)
         assertEquals(setOf(C.TRACK_TYPE_AUDIO), sequences[2].trackTypes)
-        loadIntoPlayer(built.composition)
+        // No item drops its audio (androidx/media#2854).
+        assertTrue(sequences.flatMap { it.editedMediaItems }.none { it.removeAudio })
+        load(built)
     }
 
     @Test
     fun `sequences may start with a gap and mix stills, speed changes and muted clips`() {
         val p = project {
             listOf(
-                createClip(video, it.tracks[1].id, 2.0, it.fps).copy(duration = 3.0, speed = 2.0),
-                createClip(still, it.tracks[1].id, 5.0, it.fps).copy(duration = 2.0),
+                createClip(video, it.tracks[1].id, 2.0, it.fps).copy(duration = 3.0, speed = 2.0, fadeIn = 1.0),
+                createClip(still, it.tracks[1].id, 5.0, it.fps).copy(duration = 2.0, transform = Transform(x = 100.0, scale = 0.5, rotation = 10.0)),
                 createClip(video, it.tracks[1].id, 7.0, it.fps).copy(duration = 1.0, muted = true, sourceIn = 9.0),
                 createClip(music, it.tracks[2].id, 1.0, it.fps).copy(duration = 4.0, volume = 0.5, audioFadeOut = 1.0),
             )
         }
         val built = assertNotNull(buildComposition(p))
+        assertEquals(VideoLayering.BaseLayer, built.layering)
         // Gaps are items too: gap, shot, still, shot / gap, music, gap.
         assertEquals(listOf(4, 3), built.composition.sequences.map { it.editedMediaItems.size })
         assertEquals(setOf(C.TRACK_TYPE_VIDEO, C.TRACK_TYPE_AUDIO), built.composition.sequences[0].trackTypes)
-        loadIntoPlayer(built.composition)
+        load(built)
     }
 
     @Test
-    fun `audio-only and overlapping edits build too`() {
-        loadIntoPlayer(assertNotNull(buildComposition(project { listOf(createClip(music, it.tracks[2].id, 0.0, it.fps).copy(duration = 3.0)) })).composition)
+    fun `audio-only edits build too`() {
+        load(assertNotNull(buildComposition(project { listOf(createClip(music, it.tracks[2].id, 0.0, it.fps).copy(duration = 3.0)) })))
+    }
+
+    @Test
+    fun `several video layers use the compositor, or only the bottom layer when that is not allowed`() {
         val overlap = project {
             listOf(createClip(video, it.tracks[1].id, 0.0, it.fps).copy(duration = 4.0), createClip(video, it.tracks[1].id, 2.0, it.fps).copy(duration = 4.0))
         }
-        loadIntoPlayer(assertNotNull(buildComposition(overlap)).composition)
+        val layered = assertNotNull(buildComposition(overlap))
+        assertEquals(VideoLayering.Layered, layered.layering)
+        assertEquals(2, layered.plan.videoSequences.size)
+        load(layered)
+        val base = assertNotNull(buildComposition(overlap, allowLayering = false))
+        assertEquals(VideoLayering.BaseLayer, base.layering)
+        assertEquals(1, base.plan.videoSequences.size)
+        load(base)
     }
 
     @Test
@@ -83,12 +101,12 @@ class CompositionBuildTest {
         assertNull(buildComposition(project { listOf(createClip(null, it.tracks[0].id, 0.0, it.fps)) }))
     }
 
-    private fun loadIntoPlayer(composition: androidx.media3.transformer.Composition) {
-        val player = CompositionPlayer.Builder(RuntimeEnvironment.getApplication())
-            .setVideoGraphFactory(MultipleInputVideoGraph.Factory())
-            .build()
+    /** Loads [built] into a player configured exactly as the app configures it. */
+    private fun load(built: ProjectComposition) {
+        val player = newCompositionPlayer(RuntimeEnvironment.getApplication(), built.layering == VideoLayering.Layered)
         try {
-            player.setComposition(composition)
+            player.setComposition(built.composition)
+            player.prepare()
             shadowOf(Looper.getMainLooper()).idle()
             assertNull(player.playerError)
         } finally {

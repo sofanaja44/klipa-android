@@ -89,6 +89,7 @@ fun ProgramMonitor(
     contentDescription: String,
     modifier: Modifier = Modifier,
     player: PreviewPlayer? = null,
+    playing: Boolean = false,
 ) {
     val colors = Klipa.colors
     BoxWithConstraints(modifier.background(colors.canvas), contentAlignment = Alignment.Center) {
@@ -121,7 +122,7 @@ fun ProgramMonitor(
                     if (layer.clip.text != null) {
                         Canvas(Modifier.fillMaxSize()) { drawTextLayer(layer, project, textMeasurer) }
                     } else if (asset != null && !playerShowsMedia) {
-                        MediaLayer(layer, asset, project, frames, maxPx)
+                        MediaLayer(layer, asset, project, frames, maxPx, exact = !playing)
                     }
                 }
             }
@@ -130,7 +131,7 @@ fun ProgramMonitor(
 }
 
 @Composable
-private fun MediaLayer(layer: MonitorLayer, asset: MediaAsset, project: Project, frames: FrameSource, maxPx: Int) {
+private fun MediaLayer(layer: MonitorLayer, asset: MediaAsset, project: Project, frames: FrameSource, maxPx: Int, exact: Boolean) {
     val clip = layer.clip
     // Quantize to source frames so tiny playhead moves reuse the decoded frame.
     val sourceFps = if (asset.fps > 0) asset.fps else project.fps.toDouble()
@@ -138,7 +139,8 @@ private fun MediaLayer(layer: MonitorLayer, asset: MediaAsset, project: Project,
     var bitmap by remember(asset.id) { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(asset.id, sourceFrame, maxPx) {
         // The previous frame stays up until the new one is decoded, so scrubbing never flashes.
-        frames.frame(asset, (sourceFrame + 0.5) / sourceFps, maxPx)?.let { bitmap = it }
+        // While playing without a real-time player, key frames keep up; paused, show the exact frame.
+        frames.frame(asset, (sourceFrame + 0.5) / sourceFps, maxPx, exact)?.let { bitmap = it }
     }
     val image = bitmap ?: return
     Canvas(Modifier.fillMaxSize()) {

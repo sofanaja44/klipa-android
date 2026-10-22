@@ -5,6 +5,7 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pinch
 import androidx.compose.ui.test.swipeLeft
@@ -39,6 +40,12 @@ class AppSmokeTest {
         timeline.performTouchInput {
             pinch(Offset(centerX - 40f, centerY), Offset(centerX - 200f, centerY), Offset(centerX + 40f, centerY), Offset(centerX + 200f, centerY))
         }
+
+        // The new clip's text can be edited in place.
+        compose.onNodeWithText("Edit").performClick()
+        compose.onNodeWithText("Enter text").performTextReplacement("Lisbon")
+        compose.onNodeWithText("Lisbon").assertExists()
+        compose.onNodeWithText("Bold").performClick()
 
         compose.onNodeWithText("Delete").performClick()
         compose.onNodeWithText("Your timeline is empty").assertExists()

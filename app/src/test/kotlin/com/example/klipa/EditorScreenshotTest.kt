@@ -66,7 +66,7 @@ class EditorScreenshotTest {
 
 /** Stand-in frames: a dusk gradient with a dark waterline, so the monitor has content. */
 private object SyntheticFrames : FrameSource {
-    override suspend fun frame(asset: MediaAsset, sourceTime: Double, maxSize: Int): ImageBitmap {
+    override suspend fun frame(asset: MediaAsset, sourceTime: Double, maxSize: Int, exact: Boolean): ImageBitmap {
         val width = 480
         val height = 270
         val image = ImageBitmap(width, height)

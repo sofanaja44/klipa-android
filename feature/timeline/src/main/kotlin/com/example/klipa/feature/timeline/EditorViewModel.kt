@@ -34,6 +34,7 @@ import com.example.klipa.core.edit.unlinkSelected
 import com.example.klipa.core.edit.updateAssetMetadata
 import com.example.klipa.core.edit.updateClip
 import com.example.klipa.core.edit.updateTrack
+import com.example.klipa.core.model.Clip
 import com.example.klipa.core.model.InvalidProjectException
 import com.example.klipa.core.model.MediaAsset
 import com.example.klipa.core.model.MediaKind
@@ -88,7 +89,7 @@ const val STILL_DURATION_SECONDS = 5.0
 @OptIn(FlowPreview::class)
 class EditorViewModel(
     initial: EditorState = EditorState(),
-    repository: ProjectRepository? = null,
+    private val repository: ProjectRepository? = null,
 ) : ViewModel() {
     private val _state = MutableStateFlow(initial)
     val state: StateFlow<EditorState> = _state.asStateFlow()
@@ -157,6 +158,27 @@ class EditorViewModel(
     /** Attaches a computed waveform to every asset reading [path]. Not an undo step. */
     fun attachWaveform(path: String, waveform: List<Double>) = edit { s ->
         s.updateAssetMetadata(path) { it.copy(waveform = waveform) }
+    }
+
+    /** Saves right away, e.g. when the app goes to the background. */
+    fun saveNow() {
+        val repository = repository ?: return
+        if (!_ready.value) return
+        val project = _state.value.project
+        viewModelScope.launch { repository.save(project) }
+    }
+
+    /**
+     * Opens an edit session (a sheet with sliders or a text field): everything until
+     * [endEditSession] is one undo step.
+     */
+    fun beginEditSession() = edit { it.setPlaying(false).beginTransaction() }
+
+    fun endEditSession() = edit { it.endTransaction() }
+
+    /** Applies [change] to the first selected clip; inside an edit session it joins that step. */
+    fun updateSelectedClip(change: (Clip) -> Clip) = edit { s ->
+        s.selectedIds.firstOrNull()?.let { id -> s.updateClip(id, change) } ?: s
     }
 
     fun reportPreviewFallback() {

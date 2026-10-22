@@ -19,4 +19,17 @@
     <string name="speed_title">Kecepatan</string>
     <string name="speed_hint">Durasi klip ikut berubah; suara yang tertaut ikut menyesuaikan.</string>
     <string name="importing">Mengimpor media…</string>
+    <string name="action_more">Opsi lainnya</string>
+    <string name="action_details">Detail</string>
+    <string name="action_copy">Salin</string>
+    <string name="diagnostics_title">Diagnostik pemutaran</string>
+    <string name="diagnostics_hint">Kalau pemutaran bermasalah, salin laporan ini dan kirimkan bersama langkah yang kamu lakukan.</string>
+    <string name="tool_edit_text">Edit</string>
+    <string name="tool_volume">Volume</string>
+    <string name="text_title">Teks</string>
+    <string name="text_size">Ukuran</string>
+    <string name="text_bold">Tebal</string>
+    <string name="volume_title">Volume</string>
+    <string name="volume_mute">Bisukan</string>
+    <string name="volume_level">Level</string>
 </resources>
