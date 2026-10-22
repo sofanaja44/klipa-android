@@ -27,6 +27,7 @@
     <string name="reason_asset_in_use">The media is still used on the timeline.</string>
     <string name="reason_magnetic_desync">Closing the gap would put linked sound out of sync. Turn off magnetic delete or unlink first.</string>
     <string name="message_invalid_project">The project file is damaged and can\'t be opened.</string>
+    <string name="message_preview_fallback">Real-time preview isn\'t available on this device. Showing still frames instead.</string>
     <plurals name="message_import_failed">
         <item quantity="one">%d file couldn\'t be read as media.</item>
         <item quantity="other">%d files couldn\'t be read as media.</item>

@@ -22,10 +22,9 @@ android {
 }
 
 dependencies {
-    implementation(project(":core:model"))
+    api(project(":core:media"))
     implementation(project(":core:designsystem"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.media3.exoplayer)
-    implementation(libs.androidx.media3.effect)
 }

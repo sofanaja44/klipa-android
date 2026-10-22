@@ -1,4 +1,4 @@
-package com.example.klipa.feature.preview
+package com.example.klipa.core.media
 
 import android.content.ContentResolver
 import android.content.Context
@@ -21,12 +21,18 @@ import kotlinx.coroutines.withContext
 interface FrameSource {
     /** The frame shown at [sourceTime] seconds into [asset], at most [maxSize] px on its long side. */
     suspend fun frame(asset: MediaAsset, sourceTime: Double, maxSize: Int): ImageBitmap?
+
+    /**
+     * A quick thumbnail near [sourceTime] for the timeline: the nearest key frame is
+     * close enough there, and much faster to decode.
+     */
+    suspend fun thumbnail(asset: MediaAsset, sourceTime: Double, maxSize: Int): ImageBitmap? = frame(asset, sourceTime, maxSize)
 }
 
 /**
  * Decodes frames with [MediaMetadataRetriever] and stills with the platform decoders.
- * Frame-accurate but not real-time: fine for scrubbing, replaced by the ExoPlayer
- * pipeline for playback.
+ * Frame-accurate but not real-time: used for timeline thumbnails and as the monitor's
+ * fallback when real-time preview is unavailable.
  */
 class MediaFrameSource(context: Context) : FrameSource {
     private val resolver: ContentResolver = context.applicationContext.contentResolver
@@ -48,10 +54,16 @@ class MediaFrameSource(context: Context) : FrameSource {
         override fun sizeOf(key: String, value: ImageBitmap) = value.width * value.height * 4
     }
 
-    override suspend fun frame(asset: MediaAsset, sourceTime: Double, maxSize: Int): ImageBitmap? = withContext(decoder) {
+    override suspend fun frame(asset: MediaAsset, sourceTime: Double, maxSize: Int): ImageBitmap? =
+        decode(asset, sourceTime, maxSize, MediaMetadataRetriever.OPTION_CLOSEST)
+
+    override suspend fun thumbnail(asset: MediaAsset, sourceTime: Double, maxSize: Int): ImageBitmap? =
+        decode(asset, sourceTime, maxSize, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+
+    private suspend fun decode(asset: MediaAsset, sourceTime: Double, maxSize: Int, option: Int): ImageBitmap? = withContext(decoder) {
         try {
             when (asset.kind) {
-                MediaKind.Video -> videoFrame(asset, sourceTime, maxSize)
+                MediaKind.Video -> videoFrame(asset, sourceTime, maxSize, option)
                 MediaKind.Image -> still(asset, maxSize)
                 MediaKind.Audio -> null
             }
@@ -61,12 +73,11 @@ class MediaFrameSource(context: Context) : FrameSource {
         }
     }
 
-    private fun videoFrame(asset: MediaAsset, sourceTime: Double, maxSize: Int): ImageBitmap? {
+    private fun videoFrame(asset: MediaAsset, sourceTime: Double, maxSize: Int, option: Int): ImageBitmap? {
         val retriever = retrievers.getOrPut(asset.url) {
             MediaMetadataRetriever().apply { setDataSource(appContext, Uri.parse(asset.url)) }
         }
         val micros = (sourceTime.coerceAtLeast(0.0) * 1_000_000).toLong()
-        val option = MediaMetadataRetriever.OPTION_CLOSEST
         val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             retriever.getScaledFrameAtTime(micros, option, maxSize, maxSize)
         } else {

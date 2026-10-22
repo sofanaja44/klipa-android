@@ -63,7 +63,14 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.unit.IntSize
+import com.example.klipa.core.media.FrameSource
+import com.example.klipa.core.model.MediaAsset
+import kotlin.math.floor
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.VectorPainter
@@ -173,10 +180,10 @@ private enum class TouchMode { Pending, Scrub, Pinch, Move }
  * and long-press a clip to move it in time or onto another track.
  */
 @Composable
-fun Timeline(viewModel: EditorViewModel, onAddMedia: () -> Unit, modifier: Modifier = Modifier) {
+fun Timeline(viewModel: EditorViewModel, onAddMedia: () -> Unit, modifier: Modifier = Modifier, frames: FrameSource? = null) {
     val state by viewModel.state.collectAsState()
     val ready by viewModel.ready.collectAsState()
-    TimelineContent(state, ready, viewModel, onAddMedia, modifier)
+    TimelineContent(state, ready, viewModel, frames, onAddMedia, modifier)
 }
 
 @Composable
@@ -184,6 +191,7 @@ private fun TimelineContent(
     state: EditorState,
     ready: Boolean,
     viewModel: EditorViewModel,
+    frames: FrameSource?,
     onAddMedia: () -> Unit,
     modifier: Modifier,
 ) {
@@ -196,6 +204,7 @@ private fun TimelineContent(
     val scope = rememberCoroutineScope()
     var scrollY by remember { mutableFloatStateOf(0f) }
     var fling by remember { mutableStateOf<Job?>(null) }
+    val thumbnails = remember(frames, px) { frames?.let { ThumbnailCache(it, scope, px.heights.video.roundToInt()) } }
     val glyphs = TimelineGlyphs(
         link = rememberVectorPainter(Icons.Rounded.Link),
         muted = rememberVectorPainter(Icons.AutoMirrored.Rounded.VolumeOff),
@@ -328,7 +337,7 @@ private fun TimelineContent(
                     }
                 },
         ) {
-            drawTracks(frame, px, colors, styles, textMeasurer, glyphs)
+            drawTracks(frame, px, colors, styles, textMeasurer, glyphs, thumbnails)
             drawRuler(state, viewport, px, colors, styles, textMeasurer)
             drawPlayhead(px, colors)
         }
@@ -372,6 +381,7 @@ private fun DrawScope.drawTracks(
     styles: KlipaTextStyles,
     textMeasurer: TextMeasurer,
     glyphs: TimelineGlyphs,
+    thumbnails: ThumbnailCache?,
 ) {
     val project = frame.state.project
     val viewport = frame.viewport
@@ -388,7 +398,7 @@ private fun DrawScope.drawTracks(
             for (lane in frame.lanes) {
                 for (clip in project.clips) {
                     if (clip.trackId != lane.track.id) continue
-                    drawClip(clip, lane, frame, px, colors, styles, textMeasurer, glyphs)
+                    drawClip(clip, lane, frame, px, colors, styles, textMeasurer, glyphs, thumbnails)
                 }
             }
         }
@@ -414,6 +424,7 @@ private fun DrawScope.drawClip(
     styles: KlipaTextStyles,
     textMeasurer: TextMeasurer,
     glyphs: TimelineGlyphs,
+    thumbnails: ThumbnailCache?,
 ) {
     val viewport = frame.viewport
     val left = viewport.xOf(clip.start) + 0.5f
@@ -428,7 +439,11 @@ private fun DrawScope.drawClip(
     val corner = CornerRadius(px.corner)
     drawRoundRect(colors.clipFill(asset?.kind), Offset(left, top), Size(right - left, height), corner, alpha = alpha)
 
-    clipRect(left, top, right, top + height) {
+    val shape = Path().apply { addRoundRect(RoundRect(left, top, right, top + height, corner)) }
+    clipPath(shape) {
+        if (thumbnails != null && asset != null && asset.kind != MediaKind.Audio) {
+            drawThumbnails(clip, asset, left, right, top, height, viewport, thumbnails, alpha)
+        }
         val waveform = asset?.waveform
         if (asset?.kind == MediaKind.Audio && !waveform.isNullOrEmpty() && asset.duration > 0) {
             drawWaveform(clip, waveform, asset.duration, left, right, top, height, viewport, colors.clipDetail.copy(alpha = 0.35f * alpha))
@@ -476,6 +491,38 @@ private fun DrawScope.drawClip(
             drawLine(colors.onAccent, Offset(gripX, top + height * 0.35f), Offset(gripX, top + height * 0.65f), strokeWidth = px.stroke * 0.75f)
         }
     }
+}
+
+/** A filmstrip of thumbnails, with a shade at the top so the label stays readable. */
+private fun DrawScope.drawThumbnails(
+    clip: Clip,
+    asset: MediaAsset,
+    left: Float,
+    right: Float,
+    top: Float,
+    height: Float,
+    viewport: TimelineViewport,
+    thumbnails: ThumbnailCache,
+    alpha: Float,
+) {
+    // Reading the version redraws the timeline as thumbnails arrive.
+    thumbnails.version
+    val aspect = if (asset.width > 0 && asset.height > 0) asset.width.toFloat() / asset.height else 16f / 9f
+    val tile = (height * aspect).coerceAtLeast(8f)
+    val step = thumbnails.step(tile / viewport.pxPerSecond * clip.speed)
+    var x = left + floor((maxOf(left, 0f) - left) / tile) * tile
+    while (x < minOf(right, size.width)) {
+        val source = clip.sourceIn + (viewport.timeAt(x) - clip.start) * clip.speed
+        thumbnails.get(asset, source, step)?.let { image ->
+            drawImage(image, dstOffset = IntOffset(x.roundToInt(), top.roundToInt()), dstSize = IntSize(tile.roundToInt(), height.roundToInt()), alpha = alpha)
+        }
+        x += tile
+    }
+    drawRect(
+        Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.55f), 0.45f to Color.Transparent, 0.7f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.45f), startY = top, endY = top + height),
+        topLeft = Offset(left, top),
+        size = Size(right - left, height),
+    )
 }
 
 private fun DrawScope.drawFade(edgeX: Float, top: Float, height: Float, widthPx: Float, rising: Boolean, colors: KlipaColors) {

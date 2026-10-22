@@ -1,4 +1,4 @@
-package com.example.klipa
+package com.example.klipa.core.media
 
 import android.content.Context
 import android.content.Intent

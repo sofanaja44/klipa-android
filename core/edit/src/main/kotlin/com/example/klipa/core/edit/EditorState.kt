@@ -1,6 +1,7 @@
 package com.example.klipa.core.edit
 
 import com.example.klipa.core.model.Clip
+import com.example.klipa.core.model.MediaAsset
 import com.example.klipa.core.model.Project
 import com.example.klipa.core.model.createProject
 import com.example.klipa.core.model.validateProject
@@ -107,6 +108,16 @@ fun EditorState.redo(): EditorState {
 }
 
 fun EditorState.markSaved(path: String): EditorState = copy(path = path, dirty = false)
+
+/**
+ * Updates derived metadata (such as a waveform) of the assets reading the file at [path],
+ * in the current project and every undo snapshot. It is not an edit: no undo step, and
+ * undo never brings the old metadata back.
+ */
+fun EditorState.updateAssetMetadata(path: String, change: (MediaAsset) -> MediaAsset): EditorState {
+    fun Project.patched() = copy(assets = assets.map { if (it.path == path) change(it) else it })
+    return copy(project = project.patched(), past = past.map { it.patched() }, future = future.map { it.patched() })
+}
 
 /** Selects clips together with their linked partners. */
 fun EditorState.select(ids: List<String>): EditorState = copy(selectedIds = linkedIds(project, ids))

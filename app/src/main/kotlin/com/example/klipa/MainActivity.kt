@@ -19,7 +19,8 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.klipa.core.designsystem.KlipaTheme
-import com.example.klipa.feature.preview.MediaFrameSource
+import com.example.klipa.core.media.MediaFrameSource
+import com.example.klipa.core.media.MediaProbe
 import com.example.klipa.feature.timeline.EditorViewModel
 import java.io.File
 import kotlinx.coroutines.Dispatchers

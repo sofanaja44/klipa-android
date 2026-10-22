@@ -34,6 +34,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.viewinterop.AndroidView
+import android.view.SurfaceView
+import com.example.klipa.core.media.FrameSource
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
@@ -72,11 +75,21 @@ fun monitorLayers(project: Project, time: Double): List<MonitorLayer> =
 
 /**
  * The program monitor: the project frame at [time], fitted into the available space.
- * Draws media frames, stills and text with each clip's transform, opacity and fades.
- * Crop, chroma key, masks and color adjustments arrive with the GL preview pipeline.
+ *
+ * With a live [player], media plays through its surface and text is drawn on top. Without
+ * one (or until its first frame arrives) media layers are decoded still by still from
+ * [frames]; those still frames show transform, opacity and fades, but not crop or color
+ * adjustments. Text layers always draw above media.
  */
 @Composable
-fun ProgramMonitor(project: Project, time: Double, frames: FrameSource, contentDescription: String, modifier: Modifier = Modifier) {
+fun ProgramMonitor(
+    project: Project,
+    time: Double,
+    frames: FrameSource,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+    player: PreviewPlayer? = null,
+) {
     val colors = Klipa.colors
     BoxWithConstraints(modifier.background(colors.canvas), contentAlignment = Alignment.Center) {
         val aspect = project.width.toFloat() / project.height
@@ -93,12 +106,21 @@ fun ProgramMonitor(project: Project, time: Double, frames: FrameSource, contentD
         ) {
             val maxPx = with(LocalDensity.current) { maxOf(frameWidth, frameHeight).roundToPx() }
             val textMeasurer = rememberTextMeasurer()
+            val live = player != null && player.active && !player.failed
+            if (live) {
+                AndroidView(
+                    factory = { context -> SurfaceView(context).also { player.attach(it) } },
+                    onRelease = { player.detach(it) },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            val playerShowsMedia = live && player.showingVideo
             for (layer in monitorLayers(project, time)) {
                 key(layer.clip.id) {
                     val asset = layer.asset
                     if (layer.clip.text != null) {
                         Canvas(Modifier.fillMaxSize()) { drawTextLayer(layer, project, textMeasurer) }
-                    } else if (asset != null) {
+                    } else if (asset != null && !playerShowsMedia) {
                         MediaLayer(layer, asset, project, frames, maxPx)
                     }
                 }

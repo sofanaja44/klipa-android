@@ -239,6 +239,17 @@ class EditorStateTest {
         assertFalse(s.markSaved("/projects/a.klipa").dirty)
     }
 
+    @Test
+    fun `asset metadata updates reach every snapshot without an undo step`() {
+        var s = editor().addText().addText()
+        s = s.undo()
+        s = s.updateAssetMetadata("/tmp/video.mp4") { it.copy(waveform = listOf(0.5)) }
+        assertEquals(1, s.past.size)
+        assertEquals(1, s.future.size)
+        for (project in listOf(s.project) + s.past + s.future) assertEquals(listOf(0.5), project.assets[0].waveform)
+        assertEquals(listOf(0.5), s.redo().project.assets[0].waveform)
+    }
+
     // track management
 
     @Test

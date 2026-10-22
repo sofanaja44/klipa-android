@@ -23,6 +23,7 @@ android {
 
 dependencies {
     api(project(":core:edit"))
+    implementation(project(":core:media"))
     implementation(project(":core:designsystem"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)

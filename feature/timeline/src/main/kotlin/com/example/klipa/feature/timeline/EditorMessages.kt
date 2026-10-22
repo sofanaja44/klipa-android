@@ -19,4 +19,5 @@ fun EditorMessage.describe(resources: Resources): String = when (this) {
     )
     EditorMessage.InvalidProject -> resources.getString(R.string.message_invalid_project)
     is EditorMessage.ImportFailed -> resources.getQuantityString(R.plurals.message_import_failed, count, count)
+    EditorMessage.PreviewFallback -> resources.getString(R.string.message_preview_fallback)
 }

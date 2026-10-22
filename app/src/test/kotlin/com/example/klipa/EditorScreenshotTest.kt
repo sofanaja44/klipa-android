@@ -13,20 +13,10 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import com.example.klipa.core.designsystem.KlipaTheme
 import com.example.klipa.core.edit.EditorState
-import com.example.klipa.core.edit.detachLinkedAudio
-import com.example.klipa.core.model.Easing
-import com.example.klipa.core.model.Keyframe
-import com.example.klipa.core.model.KeyframeProperty
 import com.example.klipa.core.model.MediaAsset
-import com.example.klipa.core.model.MediaKind
-import com.example.klipa.core.model.Project
-import com.example.klipa.core.model.TextStyle
-import com.example.klipa.core.model.createClip
-import com.example.klipa.core.model.createProject
-import com.example.klipa.feature.preview.FrameSource
+import com.example.klipa.core.media.FrameSource
 import com.example.klipa.feature.timeline.EditorViewModel
 import com.github.takahirom.roborazzi.captureRoboImage
-import kotlin.math.sin
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -61,56 +51,18 @@ class EditorScreenshotTest {
         val viewModel = EditorViewModel(initial = state)
         compose.setContent {
             KlipaTheme {
-                EditorScreen(viewModel, frames = SyntheticFrames, importing = false, onPickMedia = {}, onPickAudio = {})
+                // Robolectric has no GL or codecs, so the monitor uses still frames.
+                EditorScreen(viewModel, frames = SyntheticFrames, importing = false, onPickMedia = {}, onPickAudio = {}, realTimePreview = false)
             }
         }
+        // Thumbnails are requested while drawing, and Robolectric only draws on capture:
+        // draw once, let them decode, then take the real picture.
+        compose.onRoot().captureRoboImage("build/tmp/roborazzi-warmup/$name.png")
+        compose.mainClock.advanceTimeBy(500)
+        compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
     }
 }
-
-/** A short edit: two shots with extracted sound, a title, a music bed. */
-private fun sampleProject(): Project {
-    var project = createProject("Weekend in Lisbon")
-    val video = project.tracks[1].id
-    val harbor = asset("harbor", "Harbor at dusk.mp4", MediaKind.Video, 14.0)
-    val tram = asset("tram", "Tram 28.mp4", MediaKind.Video, 9.0)
-    val music = asset("music", "Saudade (instrumental).m4a", MediaKind.Audio, 60.0)
-        .copy(waveform = List(400) { i -> (0.35 + 0.3 * sin(i / 3.0) * sin(i / 17.0)).coerceIn(0.05, 1.0) })
-    project = project.copy(assets = listOf(harbor, tram, music))
-    val first = createClip(harbor, video, 0.0, 30).copy(sourceIn = 2.0, duration = 9.0, fadeIn = 1.0)
-    val second = createClip(tram, video, 9.0, 30).copy(duration = 6.0, speed = 1.5)
-    project = project.copy(clips = listOf(first, second))
-    project = detachLinkedAudio(project, first.id).project
-    val bed = createClip(music, project.tracks[2].id, 0.0, 30).copy(duration = 15.0, audioFadeOut = 3.0, muted = false)
-    val musicTrack = com.example.klipa.core.model.createTrack(com.example.klipa.core.model.TrackKind.Audio, "Music")
-    val title = createClip(null, project.tracks[0].id, 1.0, 30).copy(
-        name = "Title",
-        duration = 6.0,
-        text = TextStyle(text = "Lisbon", fontSize = 160.0, strokeWidth = 0.0),
-        transform = com.example.klipa.core.model.Transform(y = 280.0),
-        keyframes = listOf(
-            Keyframe("k1", 0.0, KeyframeProperty.Opacity, 0.0, Easing.Linear),
-            Keyframe("k2", 1.0, KeyframeProperty.Opacity, 1.0, Easing.EaseInOut),
-        ),
-    )
-    return project.copy(
-        tracks = project.tracks + musicTrack,
-        clips = project.clips + bed.copy(trackId = musicTrack.id) + title,
-    )
-}
-
-private fun asset(id: String, name: String, kind: MediaKind, duration: Double) = MediaAsset(
-    id = id,
-    name = name,
-    path = "content://media/$id",
-    url = "content://media/$id",
-    kind = kind,
-    duration = duration,
-    width = if (kind == MediaKind.Video) 1920 else 0,
-    height = if (kind == MediaKind.Video) 1080 else 0,
-    fps = if (kind == MediaKind.Video) 30.0 else 0.0,
-    hasAudio = true,
-)
 
 /** Stand-in frames: a dusk gradient with a dark waterline, so the monitor has content. */
 private object SyntheticFrames : FrameSource {

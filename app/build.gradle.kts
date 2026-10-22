@@ -12,12 +12,33 @@ android {
         applicationId = "com.example.klipa"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 4
+        versionName = "0.4.0"
+    }
+
+    // Only ship the languages the app is translated into, so library UI never shows
+    // in a third language next to ours.
+    androidResources {
+        localeFilters += listOf("en", "in")
+    }
+
+    signingConfigs {
+        // A development key, committed on purpose so APKs built on any machine install
+        // over each other. It is not secret and must not sign a Play Store release.
+        create("dev") {
+            storeFile = file("klipa-dev.keystore")
+            storePassword = "klipa-dev"
+            keyAlias = "klipa-dev"
+            keyPassword = "klipa-dev"
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("dev")
+        }
         release {
+            signingConfig = signingConfigs.getByName("dev")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -49,6 +70,7 @@ dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:edit"))
     implementation(project(":core:designsystem"))
+    implementation(project(":core:media"))
     implementation(project(":feature:timeline"))
     implementation(project(":feature:preview"))
     implementation(project(":feature:export"))
@@ -56,6 +78,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
@@ -65,6 +88,7 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 
     // Screenshot tests render the real UI on the JVM (Robolectric native graphics).
+    testImplementation(kotlin("test-junit"))
     testImplementation(libs.junit4)
     testImplementation(libs.robolectric)
     testImplementation(libs.roborazzi)

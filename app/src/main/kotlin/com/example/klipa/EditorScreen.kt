@@ -54,12 +54,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -67,19 +69,31 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import com.example.klipa.core.designsystem.Klipa
 import com.example.klipa.core.designsystem.KlipaSpacing
 import com.example.klipa.core.edit.EditorState
 import com.example.klipa.core.model.MediaKind
 import com.example.klipa.core.model.formatTime
 import com.example.klipa.core.model.projectDuration
-import com.example.klipa.feature.preview.FrameSource
+import com.example.klipa.core.media.FrameSource
+import com.example.klipa.core.media.WaveformExtractor
 import com.example.klipa.feature.preview.ProgramMonitor
+import com.example.klipa.feature.preview.rememberPreviewPlayer
 import com.example.klipa.feature.timeline.EditorViewModel
 import com.example.klipa.feature.timeline.Timeline
 import com.example.klipa.feature.timeline.describe
 import com.example.klipa.feature.timeline.formatSpeed
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+
+/** How long an edit must settle before the player reloads the project. */
+private const val PREVIEW_RELOAD_DELAY_MS = 150L
 
 /** Speeds offered in the speed sheet. */
 private val SpeedPresets = listOf(0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0)
@@ -95,6 +109,7 @@ fun EditorScreen(
     importing: Boolean,
     onPickMedia: () -> Unit,
     onPickAudio: () -> Unit,
+    realTimePreview: Boolean = true,
 ) {
     val state by viewModel.state.collectAsState()
     val colors = Klipa.colors
@@ -105,14 +120,59 @@ fun EditorScreen(
     LaunchedEffect(viewModel) {
         viewModel.messages.collect { snackbar.showSnackbar(it.describe(resources)) }
     }
-    // Playback clock: advances the playhead by real elapsed time each frame.
-    LaunchedEffect(state.playing) {
+    val preview = rememberPreviewPlayer(onFailure = { viewModel.reportPreviewFallback() })
+    // Reload the player once an edit settles; a drag in progress keeps the last load.
+    LaunchedEffect(preview, state.project, state.transactionOpen) {
+        if (!realTimePreview || state.transactionOpen) return@LaunchedEffect
+        delay(PREVIEW_RELOAD_DELAY_MS)
+        preview.setProject(state.project, viewModel.state.value.playhead)
+    }
+    // While paused, the player follows the playhead in scrubbing mode.
+    LaunchedEffect(preview, state.playing, preview.active) {
+        if (state.playing || !preview.active) return@LaunchedEffect
+        preview.pause()
+        preview.setScrubbing(true)
+        viewModel.state.map { it.playhead }.distinctUntilChanged().collect { preview.seekTo(it) }
+    }
+    // While playing, the player's clock drives the playhead; without a player, a frame
+    // clock advances it and the monitor shows still frames.
+    LaunchedEffect(preview, state.playing, preview.active) {
         if (!state.playing) return@LaunchedEffect
-        var last = withFrameNanos { it }
-        while (isActive) {
-            withFrameNanos { now ->
-                viewModel.advance((now - last) / 1e9)
-                last = now
+        if (preview.active) {
+            preview.setScrubbing(false)
+            preview.seekTo(viewModel.state.value.playhead)
+            preview.play()
+            while (isActive) {
+                withFrameNanos { }
+                if (preview.ended) {
+                    viewModel.finishPlayback()
+                    break
+                }
+                viewModel.syncPlayhead(preview.position)
+            }
+        } else {
+            var last = withFrameNanos { it }
+            while (isActive) {
+                withFrameNanos { now ->
+                    viewModel.advance((now - last) / 1e9)
+                    last = now
+                }
+            }
+        }
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { viewModel.pause() }
+
+    // Waveforms are computed once per file in the background, for imports and for
+    // projects saved before they finished. Jobs outlive changes to the asset list.
+    val context = LocalContext.current
+    val waveforms = remember { WaveformExtractor(context) }
+    val scope = rememberCoroutineScope()
+    val waveformJobs = remember { mutableMapOf<String, Job>() }
+    LaunchedEffect(state.project.assets) {
+        for (asset in state.project.assets) {
+            if (!asset.hasAudio || asset.waveform != null || asset.missing == true || asset.path in waveformJobs) continue
+            waveformJobs[asset.path] = scope.launch {
+                waveforms.extract(asset)?.let { viewModel.attachWaveform(asset.path, it) }
             }
         }
     }
@@ -124,12 +184,13 @@ fun EditorScreen(
             frames = frames,
             contentDescription = stringResource(R.string.monitor_description),
             modifier = modifier,
+            player = preview,
         )
     }
     val importingDescription = stringResource(R.string.importing)
     val timeline = @Composable { modifier: Modifier ->
         Box(modifier) {
-            Timeline(viewModel, onAddMedia = onPickMedia, modifier = Modifier.fillMaxSize())
+            Timeline(viewModel, onAddMedia = onPickMedia, modifier = Modifier.fillMaxSize(), frames = frames)
             if (importing) {
                 LinearProgressIndicator(
                     Modifier

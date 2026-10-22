@@ -31,6 +31,7 @@ import com.example.klipa.core.edit.split
 import com.example.klipa.core.edit.trimLinked
 import com.example.klipa.core.edit.undo
 import com.example.klipa.core.edit.unlinkSelected
+import com.example.klipa.core.edit.updateAssetMetadata
 import com.example.klipa.core.edit.updateClip
 import com.example.klipa.core.edit.updateTrack
 import com.example.klipa.core.model.InvalidProjectException
@@ -61,6 +62,9 @@ sealed interface EditorMessage {
 
     /** [count] picked files could not be read as media. */
     data class ImportFailed(val count: Int) : EditorMessage
+
+    /** Real-time preview failed on this device; the editor shows still frames instead. */
+    data object PreviewFallback : EditorMessage
 }
 
 /** Where the editor keeps its working project between launches. */
@@ -140,7 +144,26 @@ class EditorViewModel(
         }
     }
 
-    /** Advances the playhead during playback; stops at the end of the timeline. */
+    fun pause() = edit { it.setPlaying(false) }
+
+    /** Follows the real-time player: moves the playhead without stopping playback. */
+    fun syncPlayhead(seconds: Double) = edit { s ->
+        if (s.playing) s.copy(playhead = seconds.coerceIn(0.0, projectDuration(s.project))) else s
+    }
+
+    /** The player reached the end of the timeline. */
+    fun finishPlayback() = edit { it.copy(playhead = projectDuration(it.project), playing = false) }
+
+    /** Attaches a computed waveform to every asset reading [path]. Not an undo step. */
+    fun attachWaveform(path: String, waveform: List<Double>) = edit { s ->
+        s.updateAssetMetadata(path) { it.copy(waveform = waveform) }
+    }
+
+    fun reportPreviewFallback() {
+        _messages.trySend(EditorMessage.PreviewFallback)
+    }
+
+    /** Advances the playhead during frame-by-frame playback; stops at the end of the timeline. */
     fun advance(seconds: Double) = edit { s ->
         if (!s.playing) return@edit s
         val duration = projectDuration(s.project)

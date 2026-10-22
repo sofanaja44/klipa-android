@@ -27,6 +27,7 @@
     <string name="reason_asset_in_use">Media masih dipakai di timeline.</string>
     <string name="reason_magnetic_desync">Menutup celah akan membuat suara tertaut tidak sinkron. Matikan hapus magnetik atau lepaskan tautan dulu.</string>
     <string name="message_invalid_project">File proyek rusak dan tidak bisa dibuka.</string>
+    <string name="message_preview_fallback">Pratinjau real-time tidak tersedia di perangkat ini. Menampilkan frame diam sebagai gantinya.</string>
     <plurals name="message_import_failed">
         <item quantity="other">%d file tidak bisa dibaca sebagai media.</item>
     </plurals>
