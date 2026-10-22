@@ -22,10 +22,15 @@ android {
 }
 
 dependencies {
-    implementation(project(":core:edit"))
+    api(project(":core:edit"))
     implementation(project(":core:designsystem"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+
+    testImplementation(testFixtures(project(":core:model")))
+    testImplementation(kotlin("test-junit"))
+    testImplementation(libs.junit4)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

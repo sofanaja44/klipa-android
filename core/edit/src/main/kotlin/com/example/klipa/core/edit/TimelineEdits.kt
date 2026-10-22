@@ -47,6 +47,8 @@ class EditRejectedException(val reason: Reason) : IllegalStateException(reason.m
         InvalidSourceRange("The source range is invalid or outside the source media"),
         IncompatibleTrack("The target track is locked or does not accept this media"),
         TouchesLockedTrack("The edit would change clips on a locked track; unlock those tracks first"),
+        AssetInUse("The media is still used on the timeline; delete those clips first"),
+        MagneticDeleteDesync("Closing the gap would put linked sound out of sync; turn off magnetic delete or unlink first"),
     }
 }
 

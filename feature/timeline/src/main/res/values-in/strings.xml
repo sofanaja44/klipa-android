@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="timeline_description">Timeline</string>
+    <string name="timeline_empty_title">Timeline masih kosong</string>
+    <string name="timeline_empty_body">Tambahkan klip dari galeri untuk mulai mengedit.</string>
+    <string name="timeline_add_media">Tambah media</string>
+    <string name="track_video">Track video</string>
+    <string name="track_image">Track gambar</string>
+    <string name="track_audio">Track audio</string>
+    <string name="track_text">Track teks</string>
+    <string name="track_options">Opsi %1$s</string>
+    <string name="track_mute">Bisukan</string>
+    <string name="track_unmute">Aktifkan suara</string>
+    <string name="track_hide">Sembunyikan</string>
+    <string name="track_show">Tampilkan</string>
+    <string name="track_lock">Kunci</string>
+    <string name="track_unlock">Buka kunci</string>
+    <string name="track_move_up">Pindah ke atas</string>
+    <string name="track_move_down">Pindah ke bawah</string>
+    <string name="track_delete">Hapus track</string>
+    <string name="reason_no_audio">Klip ini tidak punya suara untuk dipisahkan.</string>
+    <string name="reason_track_locked">Buka kunci track terlebih dahulu.</string>
+    <string name="reason_already_linked">Klip ini sudah tertaut. Lepaskan tautannya dulu.</string>
+    <string name="reason_invalid_range">Bagian media itu tidak bisa ditempatkan.</string>
+    <string name="reason_incompatible_track">Track itu tidak bisa menampung media ini.</string>
+    <string name="reason_locked_track">Ini akan mengubah klip di track yang terkunci. Buka kuncinya dulu.</string>
+    <string name="reason_asset_in_use">Media masih dipakai di timeline.</string>
+    <string name="reason_magnetic_desync">Menutup celah akan membuat suara tertaut tidak sinkron. Matikan hapus magnetik atau lepaskan tautan dulu.</string>
+    <string name="message_invalid_project">File proyek rusak dan tidak bisa dibuka.</string>
+    <plurals name="message_import_failed">
+        <item quantity="other">%d file tidak bisa dibaca sebagai media.</item>
+    </plurals>
+</resources>

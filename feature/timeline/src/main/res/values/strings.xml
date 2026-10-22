@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="timeline_description">Timeline</string>
+    <string name="timeline_empty_title">Your timeline is empty</string>
+    <string name="timeline_empty_body">Add clips from your gallery to start cutting.</string>
+    <string name="timeline_add_media">Add media</string>
+    <string name="track_video">Video track</string>
+    <string name="track_image">Image track</string>
+    <string name="track_audio">Audio track</string>
+    <string name="track_text">Text track</string>
+    <string name="track_options">%1$s options</string>
+    <string name="track_mute">Mute</string>
+    <string name="track_unmute">Unmute</string>
+    <string name="track_hide">Hide</string>
+    <string name="track_show">Show</string>
+    <string name="track_lock">Lock</string>
+    <string name="track_unlock">Unlock</string>
+    <string name="track_move_up">Move up</string>
+    <string name="track_move_down">Move down</string>
+    <string name="track_delete">Delete track</string>
+    <string name="reason_no_audio">This clip has no sound to detach.</string>
+    <string name="reason_track_locked">Unlock the track first.</string>
+    <string name="reason_already_linked">This clip is already linked. Unlink it first.</string>
+    <string name="reason_invalid_range">That part of the media can\'t be placed.</string>
+    <string name="reason_incompatible_track">That track can\'t hold this media.</string>
+    <string name="reason_locked_track">This would change clips on a locked track. Unlock it first.</string>
+    <string name="reason_asset_in_use">The media is still used on the timeline.</string>
+    <string name="reason_magnetic_desync">Closing the gap would put linked sound out of sync. Turn off magnetic delete or unlink first.</string>
+    <string name="message_invalid_project">The project file is damaged and can\'t be opened.</string>
+    <plurals name="message_import_failed">
+        <item quantity="one">%d file couldn\'t be read as media.</item>
+        <item quantity="other">%d files couldn\'t be read as media.</item>
+    </plurals>
+</resources>

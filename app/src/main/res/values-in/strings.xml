@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="project_format">%1$d × %2$d · %3$d fps</string>
+    <string name="action_undo">Urungkan</string>
+    <string name="action_redo">Ulangi</string>
+    <string name="action_play">Putar</string>
+    <string name="action_pause">Jeda</string>
+    <string name="monitor_description">Monitor program</string>
+    <string name="tool_media">Media</string>
+    <string name="tool_audio">Audio</string>
+    <string name="tool_text">Teks</string>
+    <string name="tool_done">Selesai</string>
+    <string name="tool_split">Potong</string>
+    <string name="tool_speed">Kecepatan</string>
+    <string name="tool_detach_audio">Ekstrak audio</string>
+    <string name="tool_unlink">Lepas tautan</string>
+    <string name="tool_duplicate">Duplikat</string>
+    <string name="tool_delete">Hapus</string>
+    <string name="speed_title">Kecepatan</string>
+    <string name="speed_hint">Durasi klip ikut berubah; suara yang tertaut ikut menyesuaikan.</string>
+    <string name="importing">Mengimpor media…</string>
+</resources>

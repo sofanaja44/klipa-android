@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Klipa mark: three staggered timeline clips crossed by the amber playhead. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FF4C7096"
+        android:pathData="M33,38h32a4,4 0,0 1,0,8h-32a4,4 0,0 1,0,-8z" />
+    <path
+        android:fillColor="#FF3A8A72"
+        android:pathData="M45,50h32a4,4 0,0 1,0,8h-32a4,4 0,0 1,0,-8z" />
+    <path
+        android:fillColor="#FF8566A8"
+        android:pathData="M31,62h26a4,4 0,0 1,0,8h-26a4,4 0,0 1,0,-8z" />
+    <path
+        android:fillColor="#FFFFC23D"
+        android:pathData="M48,29h10v5l-3.5,3.5v39.5h-3v-39.5l-3.5,-3.5z" />
+</vector>

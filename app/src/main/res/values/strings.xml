@@ -1,4 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Klipa</string>
+    <string name="app_name" translatable="false">Klipa</string>
+    <string name="project_format">%1$d × %2$d · %3$d fps</string>
+    <string name="action_undo">Undo</string>
+    <string name="action_redo">Redo</string>
+    <string name="action_play">Play</string>
+    <string name="action_pause">Pause</string>
+    <string name="monitor_description">Program monitor</string>
+    <string name="tool_media">Media</string>
+    <string name="tool_audio">Audio</string>
+    <string name="tool_text">Text</string>
+    <string name="tool_done">Done</string>
+    <string name="tool_split">Split</string>
+    <string name="tool_speed">Speed</string>
+    <string name="tool_detach_audio">Extract audio</string>
+    <string name="tool_unlink">Unlink</string>
+    <string name="tool_duplicate">Duplicate</string>
+    <string name="tool_delete">Delete</string>
+    <string name="speed_title">Speed</string>
+    <string name="speed_hint">The clip gets shorter or longer; linked sound follows.</string>
+    <string name="importing">Importing media…</string>
 </resources>
