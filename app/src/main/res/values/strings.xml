@@ -4,6 +4,7 @@
     <string name="project_format">%1$d × %2$d · %3$d fps</string>
     <string name="action_undo">Undo</string>
     <string name="action_redo">Redo</string>
+    <string name="action_export">Export</string>
     <string name="action_play">Play</string>
     <string name="action_pause">Pause</string>
     <string name="monitor_description">Program monitor</string>

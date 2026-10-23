@@ -186,6 +186,14 @@ class PreviewPlayer(
         releasePlayer()
     }
 
+    /** Frees the player and its decoders, e.g. while exporting; [setProject] loads again. */
+    fun unload() {
+        wantPlaying = false
+        releasePlayer()
+        if (mode != PreviewMode.StillFrames) mode = PreviewMode.Idle
+        revision++
+    }
+
     /** A plain-text report of the player's state, for bug reports. */
     fun diagnostics(): String = buildString {
         val player = player

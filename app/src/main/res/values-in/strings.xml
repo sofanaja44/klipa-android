@@ -3,6 +3,7 @@
     <string name="project_format">%1$d × %2$d · %3$d fps</string>
     <string name="action_undo">Urungkan</string>
     <string name="action_redo">Ulangi</string>
+    <string name="action_export">Ekspor</string>
     <string name="action_play">Putar</string>
     <string name="action_pause">Jeda</string>
     <string name="monitor_description">Monitor program</string>

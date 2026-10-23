@@ -21,6 +21,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.klipa.core.designsystem.KlipaTheme
 import com.example.klipa.core.media.MediaFrameSource
 import com.example.klipa.core.media.MediaProbe
+import com.example.klipa.feature.export.ExportViewModel
 import com.example.klipa.feature.timeline.EditorViewModel
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +32,12 @@ class MainActivity : ComponentActivity() {
     private val viewModel: EditorViewModel by viewModels {
         viewModelFactory {
             initializer { EditorViewModel(repository = ProjectFileRepository(File(filesDir, "projects"))) }
+        }
+    }
+
+    private val exporter: ExportViewModel by viewModels {
+        viewModelFactory {
+            initializer { ExportViewModel(application) }
         }
     }
 
@@ -61,6 +68,7 @@ class MainActivity : ComponentActivity() {
                 val pickAudio = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { import(it) }
                 EditorScreen(
                     viewModel = viewModel,
+                    exporter = exporter,
                     frames = frames,
                     importing = importing,
                     onPickMedia = { pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },

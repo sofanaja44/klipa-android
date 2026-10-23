@@ -17,8 +17,17 @@ import com.example.klipa.core.model.MediaAsset
 import com.example.klipa.core.media.FrameSource
 import com.example.klipa.feature.timeline.EditorViewModel
 import com.github.takahirom.roborazzi.captureRoboImage
+import androidx.compose.ui.test.isRoot
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.media3.transformer.Composition
+import com.example.klipa.feature.export.ExportEngine
+import com.example.klipa.feature.export.ExportSettings
+import java.io.File
+import com.example.klipa.feature.export.ExportViewModel
 import org.junit.Rule
 import org.junit.Test
+import org.robolectric.RuntimeEnvironment
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -47,19 +56,58 @@ class EditorScreenshotTest {
     @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
     fun landscape() = capture(EditorState().copy(project = sampleProject(), playhead = 4.2, zoom = 38.0), "editor_landscape")
 
-    private fun capture(state: EditorState, name: String) {
+    @Test
+    fun exportSettings() {
+        show(EditorState().copy(project = sampleProject(), playhead = 4.2, zoom = 38.0))
+        compose.onNodeWithText("Export").performClick()
+        compose.mainClock.advanceTimeBy(1000)
+        compose.waitForIdle()
+        compose.onNodeWithText("Resolution").assertExists()
+        captureSheet("export_settings")
+    }
+
+    @Test
+    fun exportInProgress() {
+        // An engine that never finishes, 42% of the way through.
+        val engine = object : ExportEngine {
+            override fun start(composition: Composition, output: File, videoBitrate: Int, listener: ExportEngine.Listener) = Unit
+
+            override fun progress(): Float = 0.42f
+
+            override fun cancel() = Unit
+        }
+        val exporter = ExportViewModel(RuntimeEnvironment.getApplication(), engineFactory = { engine })
+        val state = EditorState().copy(project = sampleProject(), playhead = 4.2, zoom = 38.0)
+        show(state, exporter)
+        exporter.start(state.project, ExportSettings(1080))
+        compose.mainClock.advanceTimeBy(1000)
+        compose.waitForIdle()
+        compose.onNodeWithText("42%").assertExists()
+        captureSheet("export_progress")
+    }
+
+    private fun show(state: EditorState, exporter: ExportViewModel = ExportViewModel(RuntimeEnvironment.getApplication())) {
         val viewModel = EditorViewModel(initial = state)
         compose.setContent {
             KlipaTheme {
                 // Robolectric has no GL or codecs, so the monitor uses still frames.
-                EditorScreen(viewModel, frames = SyntheticFrames, importing = false, onPickMedia = {}, onPickAudio = {}, realTimePreview = false)
+                EditorScreen(viewModel, exporter, frames = SyntheticFrames, importing = false, onPickMedia = {}, onPickAudio = {}, realTimePreview = false)
             }
         }
         // Thumbnails are requested while drawing, and Robolectric only draws on capture:
-        // draw once, let them decode, then take the real picture.
-        compose.onRoot().captureRoboImage("build/tmp/roborazzi-warmup/$name.png")
+        // draw once, let them decode.
+        compose.onRoot().captureRoboImage("build/tmp/roborazzi-warmup/${System.nanoTime()}.png")
         compose.mainClock.advanceTimeBy(500)
         compose.waitForIdle()
+    }
+
+    /** Sheets open in a window of their own: the second compose root. */
+    private fun captureSheet(name: String) {
+        compose.onAllNodes(isRoot())[1].captureRoboImage("build/outputs/roborazzi/$name.png")
+    }
+
+    private fun capture(state: EditorState, name: String) {
+        show(state)
         compose.onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
     }
 }

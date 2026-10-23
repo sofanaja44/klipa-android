@@ -69,9 +69,15 @@ class ProjectComposition(val composition: Composition, val plan: CompositionPlan
 /**
  * Returns null when nothing in the project has media to play. With [allowLayering], a
  * project with several video layers composites them all; otherwise only the bottom one
- * is shown.
+ * is shown. [videoEffects] apply to the finished frame (after compositing), in order;
+ * [hdrMode] is one of Composition's `HDR_MODE_` constants.
  */
-fun buildComposition(project: Project, allowLayering: Boolean = true): ProjectComposition? {
+fun buildComposition(
+    project: Project,
+    allowLayering: Boolean = true,
+    videoEffects: List<Effect> = emptyList(),
+    hdrMode: Int = Composition.HDR_MODE_KEEP_HDR,
+): ProjectComposition? {
     var plan = planComposition(project)
     val layering = if (allowLayering && plan.videoSequences.size > 1) VideoLayering.Layered else VideoLayering.BaseLayer
     if (layering == VideoLayering.BaseLayer) plan = plan.baseLayerOnly()
@@ -92,8 +98,9 @@ fun buildComposition(project: Project, allowLayering: Boolean = true): ProjectCo
         }
         builder.build()
     }
-    val composition = Composition.Builder(sequences)
+    val composition = Composition.Builder(sequences).setHdrMode(hdrMode)
     if (layering == VideoLayering.Layered) composition.setVideoCompositorSettings(ProjectCompositorSettings(project, plan))
+    if (videoEffects.isNotEmpty()) composition.setEffects(Effects(emptyList(), videoEffects))
     return ProjectComposition(composition.build(), plan, layering)
 }
 
@@ -148,8 +155,10 @@ private fun gainProcessor(clip: Clip, muted: Boolean): AudioProcessor? {
         val gain = clip.volume.toFloat()
         return GainAudioProcessor { gain }
     }
+    // Media3 changes speed before item audio processors run (in both CompositionPlayer and
+    // Transformer), so the position is already clip-local timeline time.
     return GainAudioProcessor { positionUs ->
-        val local = positionUs / 1_000_000.0 / clip.speed
+        val local = positionUs / 1_000_000.0
         val volume = evaluateKeyframe(clip, KeyframeProperty.Volume, local) ?: clip.volume
         (volume * evaluateFade(clip, local, FadeChannel.Audio)).toFloat()
     }
@@ -248,7 +257,7 @@ internal class ProjectCompositorSettings(private val project: Project, plan: Com
     override fun getOutputSize(inputSizes: List<Size>): Size = Size(project.width, project.height)
 
     override fun getOverlaySettings(inputId: Int, presentationTimeUs: Long): OverlaySettings {
-        val item = layers.getOrNull(inputId)?.itemAt(presentationTimeUs) ?: return Hidden
+        val item = layers.getOrNull(inputId)?.itemAt(presentationTimeUs) ?: return HiddenOverlay
         return layerOverlay(project, item.clip, item.localSeconds(presentationTimeUs))
     }
 }
@@ -285,4 +294,4 @@ internal data class LayerOverlay(
     override fun getRotationDegrees(): Float = rotation
 }
 
-private val Hidden = LayerOverlay(alpha = 0f, anchorX = 0f, anchorY = 0f, scaleX = 1f, scaleY = 1f, rotation = 0f)
+internal val HiddenOverlay = LayerOverlay(alpha = 0f, anchorX = 0f, anchorY = 0f, scaleX = 1f, scaleY = 1f, rotation = 0f)

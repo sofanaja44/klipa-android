@@ -5,7 +5,7 @@ import android.media.AudioFormat
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
-import android.net.Uri
+import androidx.core.net.toUri
 import com.example.klipa.core.model.MediaAsset
 import java.nio.ByteOrder
 import kotlin.math.abs
@@ -35,7 +35,7 @@ class WaveformExtractor(context: Context) {
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
         try {
-            extractor.setDataSource(context, Uri.parse(asset.url), null)
+            extractor.setDataSource(context, asset.url.toUri(), null)
             val track = (0 until extractor.trackCount).firstOrNull {
                 extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
             } ?: return@withContext null

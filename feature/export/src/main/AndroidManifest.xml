@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Saving into Movies/Klipa on Android 9 and older needs WRITE_EXTERNAL_STORAGE; the
+         app declares it, since a library declaring it makes the manifest merger add
+         READ_EXTERNAL_STORAGE for every Android version. -->
+
+    <application>
+        <!-- Shares an export kept in app storage when it could not go into the gallery. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.exports"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/export_paths" />
+        </provider>
+    </application>
+
+</manifest>

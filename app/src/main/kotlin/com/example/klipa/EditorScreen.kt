@@ -17,6 +17,12 @@ import androidx.compose.ui.unit.sp
 import com.example.klipa.core.designsystem.KlipaShapes
 import com.example.klipa.core.media.playbackSignature
 import com.example.klipa.feature.preview.PreviewPlayer
+import com.example.klipa.feature.export.ExportSheet
+import com.example.klipa.feature.export.ExportState
+import com.example.klipa.feature.export.ExportViewModel
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material3.Button
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.example.klipa.feature.timeline.EditorMessage
 import java.util.Locale
 import kotlinx.coroutines.flow.conflate
@@ -140,6 +146,7 @@ private val SpeedPresets = listOf(0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0)
 @Composable
 fun EditorScreen(
     viewModel: EditorViewModel,
+    exporter: ExportViewModel,
     frames: FrameSource,
     importing: Boolean,
     onPickMedia: () -> Unit,
@@ -153,6 +160,10 @@ fun EditorScreen(
     var speedSheet by remember { mutableStateOf(false) }
     var diagnosticsSheet by remember { mutableStateOf(false) }
     var openSheet by remember { mutableStateOf<ClipSheet?>(null) }
+    // Saveable, so an export in progress keeps its sheet through rotation.
+    var exportSheet by rememberSaveable { mutableStateOf(false) }
+    val exportState by exporter.state.collectAsState()
+    val exporting = exportState is ExportState.Running || exportState is ExportState.Saving
 
     LaunchedEffect(viewModel) {
         viewModel.messages.collect { message ->
@@ -168,8 +179,13 @@ fun EditorScreen(
     // Reload the player once an edit that changes playback settles; renames, finished
     // waveforms and drags in progress do not interrupt it.
     val signature = remember(state.project) { playbackSignature(state.project) }
-    LaunchedEffect(preview, signature, state.transactionOpen) {
+    LaunchedEffect(preview, signature, state.transactionOpen, exporting) {
         if (!realTimePreview || state.transactionOpen) return@LaunchedEffect
+        if (exporting) {
+            // The export needs the device's decoders and encoder; the preview hands them over.
+            preview.unload()
+            return@LaunchedEffect
+        }
         delay(PREVIEW_RELOAD_DELAY_MS)
         preview.setProject(viewModel.state.value.project, viewModel.state.value.playhead)
     }
@@ -274,6 +290,11 @@ fun EditorScreen(
         )
     }
 
+    val openExport = {
+        viewModel.pause()
+        exportSheet = true
+    }
+
     // The Surface sets the default content color for icons and text below it.
     Surface(Modifier.fillMaxSize(), color = colors.canvas, contentColor = colors.textPrimary) {
         Box(Modifier.fillMaxSize()) {
@@ -282,7 +303,7 @@ fun EditorScreen(
                     // Landscape: the monitor keeps the left half, the timeline gets the full height on the right.
                     Row(Modifier.fillMaxSize()) {
                         Column(Modifier.weight(0.9f).fillMaxHeight()) {
-                            EditorTopBar(state, onUndo = viewModel::undo, onRedo = viewModel::redo, onDiagnostics = { diagnosticsSheet = true })
+                            EditorTopBar(state, onUndo = viewModel::undo, onRedo = viewModel::redo, onExport = openExport, onDiagnostics = { diagnosticsSheet = true })
                             monitor(Modifier.weight(1f).fillMaxWidth())
                             TransportBar(state, onTogglePlay = viewModel::togglePlay)
                         }
@@ -295,7 +316,7 @@ fun EditorScreen(
                 } else {
                     val timelineHeight = (maxHeight * 0.4f).coerceIn(180.dp, 360.dp)
                     Column(Modifier.fillMaxSize()) {
-                        EditorTopBar(state, onUndo = viewModel::undo, onRedo = viewModel::redo, onDiagnostics = { diagnosticsSheet = true })
+                        EditorTopBar(state, onUndo = viewModel::undo, onRedo = viewModel::redo, onExport = openExport, onDiagnostics = { diagnosticsSheet = true })
                         monitor(Modifier.weight(1f).fillMaxWidth())
                         TransportBar(state, onTogglePlay = viewModel::togglePlay)
                         timeline(Modifier.fillMaxWidth().height(timelineHeight))
@@ -324,6 +345,9 @@ fun EditorScreen(
     }
     if (speedSheet && selected != null) {
         SpeedSheet(current = selected.speed, onSpeed = viewModel::setSpeed, onDismiss = { speedSheet = false })
+    }
+    if (exportSheet || exporting) {
+        ExportSheet(state.project, exporter, onDismiss = { exportSheet = false })
     }
     if (diagnosticsSheet) {
         DiagnosticsSheet(report = { diagnosticsReport(context, state, preview) }, revision = preview.revision, onDismiss = { diagnosticsSheet = false })
@@ -381,7 +405,7 @@ private fun DiagnosticsSheet(report: () -> String, revision: Int, onDismiss: () 
 }
 
 @Composable
-private fun EditorTopBar(state: EditorState, onUndo: () -> Unit, onRedo: () -> Unit, onDiagnostics: () -> Unit) {
+private fun EditorTopBar(state: EditorState, onUndo: () -> Unit, onRedo: () -> Unit, onExport: () -> Unit, onDiagnostics: () -> Unit) {
     val colors = Klipa.colors
     var menu by remember { mutableStateOf(false) }
     Row(
@@ -401,6 +425,14 @@ private fun EditorTopBar(state: EditorState, onUndo: () -> Unit, onRedo: () -> U
         }
         IconButton(onClick = onRedo, enabled = state.canRedo) {
             Icon(Icons.AutoMirrored.Rounded.Redo, contentDescription = stringResource(R.string.action_redo))
+        }
+        Button(
+            onClick = onExport,
+            modifier = Modifier.padding(horizontal = KlipaSpacing.xs).height(34.dp),
+            shape = KlipaShapes.control,
+            contentPadding = PaddingValues(horizontal = KlipaSpacing.md),
+        ) {
+            Text(stringResource(R.string.action_export), style = MaterialTheme.typography.labelLarge)
         }
         Box {
             IconButton(onClick = { menu = true }) {

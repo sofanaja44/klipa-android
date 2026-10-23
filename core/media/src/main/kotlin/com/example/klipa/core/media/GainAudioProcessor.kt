@@ -13,9 +13,9 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * Multiplies PCM audio by a gain. [gainAt] receives the position in microseconds from
- * the start of the item; it is sampled every [BLOCK_FRAMES] frames, which is smooth
- * enough for fades and volume keyframes.
+ * Multiplies PCM audio by a gain. [gainAt] receives the position in microseconds of the
+ * audio it is given since the start of the item (after any speed change); it is sampled
+ * every [BLOCK_FRAMES] frames, which is smooth enough for fades and volume keyframes.
  */
 class GainAudioProcessor(private val gainAt: (positionUs: Long) -> Float) : BaseAudioProcessor() {
     private var positionUs = 0L

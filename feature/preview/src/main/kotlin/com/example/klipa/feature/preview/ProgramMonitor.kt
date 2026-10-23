@@ -18,28 +18,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextMeasurer
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.drawText
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.viewinterop.AndroidView
 import android.view.SurfaceView
 import com.example.klipa.core.media.FrameSource
+import com.example.klipa.core.media.parseArgb
+import com.example.klipa.core.media.renderText
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.em
 import com.example.klipa.core.designsystem.Klipa
 import com.example.klipa.core.model.Clip
 import com.example.klipa.core.model.FadeChannel
@@ -51,7 +45,6 @@ import com.example.klipa.core.model.evaluateFade
 import com.example.klipa.core.model.evaluateKeyframes
 import kotlin.math.floor
 import kotlin.math.roundToInt
-import com.example.klipa.core.model.TextAlign as ClipTextAlign
 
 /** A clip visible at the playhead, with its keyframes evaluated. */
 data class MonitorLayer(val clip: Clip, val asset: MediaAsset?, val local: Double, val alpha: Float)
@@ -79,7 +72,7 @@ fun monitorLayers(project: Project, time: Double): List<MonitorLayer> =
  * With a live [player], media plays through its surface and text is drawn on top. Without
  * one (or until its first frame arrives) media layers are decoded still by still from
  * [frames]; those still frames show transform, opacity and fades, but not crop or color
- * adjustments. Text layers always draw above media.
+ * adjustments. Text layers always draw above media, rendered by the same code as export.
  */
 @Composable
 fun ProgramMonitor(
@@ -105,8 +98,10 @@ fun ProgramMonitor(
                 .clipToBounds()
                 .semantics { this.contentDescription = contentDescription },
         ) {
-            val maxPx = with(LocalDensity.current) { maxOf(frameWidth, frameHeight).roundToPx() }
-            val textMeasurer = rememberTextMeasurer()
+            val density = LocalDensity.current
+            val maxPx = with(density) { maxOf(frameWidth, frameHeight).roundToPx() }
+            // Screen pixels per project pixel, for text rendered at screen resolution.
+            val textScale = with(density) { frameWidth.toPx() } / project.width
             val live = player != null && player.active && !player.failed
             if (live) {
                 AndroidView(
@@ -120,7 +115,7 @@ fun ProgramMonitor(
                 key(layer.clip.id) {
                     val asset = layer.asset
                     if (layer.clip.text != null) {
-                        Canvas(Modifier.fillMaxSize()) { drawTextLayer(layer, project, textMeasurer) }
+                        TextLayer(layer, project, textScale)
                     } else if (asset != null && !playerShowsMedia) {
                         MediaLayer(layer, asset, project, frames, maxPx, exact = !playing)
                     }
@@ -168,56 +163,16 @@ private fun DrawScope.withClipTransform(clip: Clip, project: Project, draw: Draw
     }) { draw(scale) }
 }
 
-private fun DrawScope.drawTextLayer(layer: MonitorLayer, project: Project, textMeasurer: TextMeasurer) {
+@Composable
+private fun TextLayer(layer: MonitorLayer, project: Project, scale: Float) {
     val style = layer.clip.text ?: return
-    withClipTransform(layer.clip, project) { scale ->
-        val fontPx = (style.fontSize * scale).toFloat()
-        if (fontPx < 1f) return@withClipTransform
-        val textStyle = TextStyle(
-            color = parseColor(style.color) ?: Color.White,
-            fontSize = fontPx.toSp(),
-            lineHeight = 1.3.em,
-            fontWeight = if (style.bold) FontWeight.Bold else FontWeight.Normal,
-            textAlign = style.align.toCompose(),
-        )
-        val measured = textMeasurer.measure(style.text, textStyle)
-        val padding = fontPx * 0.25f + (style.strokeWidth * scale).toFloat()
-        val w = measured.size.width + padding * 2
-        val h = measured.size.height + padding * 2
-        val topLeft = Offset(-w / 2 + padding, -h / 2 + padding)
-        parseColor(style.background)?.takeIf { it.alpha > 0f }?.let {
-            drawRect(it, Offset(-w / 2, -h / 2), Size(w, h), alpha = layer.alpha)
+    val image = remember(style, scale) { renderText(style, scale)?.asImageBitmap() } ?: return
+    Canvas(Modifier.fillMaxSize()) {
+        withClipTransform(layer.clip, project) {
+            drawImage(image, topLeft = Offset(-image.width / 2f, -image.height / 2f), alpha = layer.alpha)
         }
-        val stroke = parseColor(style.stroke)
-        if (style.strokeWidth > 0 && stroke != null && stroke.alpha > 0f) {
-            drawText(
-                textMeasurer.measure(style.text, textStyle.copy(color = stroke, drawStyle = Stroke(width = (style.strokeWidth * 2 * scale).toFloat()))),
-                topLeft = topLeft,
-                alpha = layer.alpha,
-            )
-        }
-        drawText(measured, topLeft = topLeft, alpha = layer.alpha)
     }
-}
-
-private fun ClipTextAlign.toCompose(): TextAlign = when (this) {
-    ClipTextAlign.Left -> TextAlign.Left
-    ClipTextAlign.Center -> TextAlign.Center
-    ClipTextAlign.Right -> TextAlign.Right
 }
 
 /** Parses the colors a project may contain: `#rrggbb`, `#rrggbbaa` and a few names. */
-fun parseColor(value: String): Color? {
-    when (value.lowercase()) {
-        "black" -> return Color.Black
-        "white" -> return Color.White
-        "red" -> return Color.Red
-        "green" -> return Color(0xFF008000)
-        "blue" -> return Color.Blue
-        "transparent" -> return Color.Transparent
-    }
-    if (!value.startsWith("#") || (value.length != 7 && value.length != 9)) return null
-    val rgb = value.substring(1, 7).toLongOrNull(16) ?: return null
-    val alpha = if (value.length == 9) value.substring(7, 9).toLongOrNull(16) ?: return null else 0xFF
-    return Color((alpha shl 24) or rgb)
-}
+fun parseColor(value: String): Color? = parseArgb(value)?.let { Color(it) }

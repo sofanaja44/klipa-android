@@ -4,9 +4,9 @@ A native Android video editor. Kotlin, Jetpack Compose, and AndroidX Media3
 (ExoPlayer for preview, Transformer for export). The editing engine is ported
 from [ReaCut](https://github.com/Xiangyu-CAS/rea-capcut) (MIT).
 
-**Status:** milestones 1–4 (version 0.4.1). Import media, cut on a multi-track
-timeline with thumbnails and waveforms, and play the edit back in real time
-with sound. The project autosaves. Export is next.
+**Status:** milestones 1–5 (version 0.5.0). Import media, cut on a multi-track
+timeline with thumbnails and waveforms, play the edit back in real time with
+sound, and export it to an MP4 in the phone's gallery. The project autosaves.
 
 ## What works
 
@@ -28,6 +28,15 @@ with sound. The project autosaves. Export is next.
   falls back to the bottom track, and then to decoded still frames. Crop,
   brightness, contrast, saturation, speed, volume and fades apply; scrubbing
   seeks the player.
+- **Export to MP4** (H.264 video, AAC audio) through Media3 `Transformer`, from
+  the same composition the preview plays, with every video layer composited and
+  titles drawn on top. Pick 480p, 720p or 1080p (up to the project's own size;
+  the sheet estimates the file size), follow progress, cancel. The video goes to
+  Movies/Klipa and can be shared or played from the sheet. HDR footage is
+  tone-mapped to SDR; media shot at a higher frame rate is thinned to the
+  project's.
+- **Titles** are rendered by one piece of code for the monitor and the export
+  (ported from ReaCut's `renderText`), so they look the same in both.
 - **Playback diagnostics** (⋮ menu): player mode, state, composition layout,
   recent errors and the device, ready to copy into a bug report.
 - **Timeline thumbnails and waveforms**, decoded in the background.
@@ -35,17 +44,21 @@ with sound. The project autosaves. Export is next.
   format.
 - Portrait and landscape layouts; English and Indonesian.
 
-Not yet: export (milestone 5); chroma key, masks, blur and color temperature
-are kept in the project but not rendered (milestone 6); text is drawn above
-all media regardless of track order; the project background color is not
-rendered behind media in real-time preview; one working project (no project
-list).
+Not yet: chroma key, masks, blur and color temperature are kept in the project
+but not rendered (milestone 6); text is drawn above all media regardless of
+track order; the project background color is not rendered behind media (gaps
+are black); a project needs a video or photo to export; exports run while Klipa
+is open (no background service yet); one working project (no project list).
 
 ## Install on a phone
 
 Download the release APK (from a build, `app/build/outputs/apk/release/app-release.apk`),
 open it on the phone and allow installing from that app when Android asks.
 Android 8.0 or newer.
+
+Exports need no permission on Android 10 and newer. On Android 8 and 9, Klipa
+asks for storage access at the first export, to save into Movies/Klipa; without
+it the video stays in the app and can still be shared.
 
 APKs are signed with a development key committed at `app/klipa-dev.keystore`, so
 any build installs over the previous one. That key is not secret: a Play Store
@@ -57,7 +70,7 @@ release needs its own key, kept out of the repository.
 2. ~~Project load/save (ReaCut JSON shape) and validation~~
 3. ~~Compose timeline (tracks, clips, playhead, zoom, selection) with undo and transactions~~
 4. ~~Preview: real-time playback of all layers with sound~~
-5. Export with Media3 Transformer: one track, then multi-track, effects and text
+5. ~~Export with Media3 Transformer: one track, then multi-track, effects and text~~
 6. Custom GL shaders: chroma key, mask, blur, temperature
 
 ## Engine
@@ -105,7 +118,7 @@ JUnit; the assistant and transition cases come with those features.
 | `:feature:timeline` | Android library | `EditorViewModel`, the Canvas timeline and its gestures |
 | `:core:media` | Android library | Media access (probing, frames, waveforms) and the project → Media3 `Composition` mapping shared by preview and export |
 | `:feature:preview` | Android library | Program monitor and the real-time `PreviewPlayer` |
-| `:feature:export` | Android library | Export with Media3 Transformer |
+| `:feature:export` | Android library | Export: Transformer engine, saving to the gallery, the export sheet |
 
 `:core:model` and `:core:edit` have no Android dependency, so their tests run on
 the JVM without an emulator.
@@ -121,7 +134,7 @@ Requirements: JDK 17+, Android SDK with platform 37.
 ./gradlew assembleRelease                        # installable APK (R8, dev-signed)
 ./gradlew assembleDebug                          # debug APK
 ./gradlew :core:model:test :core:edit:test       # engine tests (plain JVM)
-./gradlew testDebugUnitTest                      # ViewModel, timeline, composition, app smoke test
+./gradlew testDebugUnitTest                      # ViewModel, timeline, composition, export, app smoke test
 ./gradlew :app:recordRoborazziDebug              # editor screenshots -> app/build/outputs/roborazzi
 ./gradlew lintDebug
 ```
@@ -129,9 +142,9 @@ Requirements: JDK 17+, Android SDK with platform 37.
 Screenshots are rendered by Robolectric on the JVM, so the UI can be reviewed
 without a device.
 
-Real-time preview uses Media3 APIs marked unstable or experimental
-(`Composition`, `CompositionPlayer`); upgrading Media3 needs a check that they
-still behave the same.
+Preview and export use Media3 APIs marked unstable or experimental
+(`Composition`, `CompositionPlayer`, `Transformer` compositions, overlays);
+upgrading Media3 needs a check that they still behave the same.
 
 Versions are pinned in `gradle/libs.versions.toml` (AGP 9.4.1, Kotlin 2.4.21,
 Gradle 9.8.2, Compose BOM 2026.09.00, Media3 1.11.1). minSdk 26, targetSdk 37.

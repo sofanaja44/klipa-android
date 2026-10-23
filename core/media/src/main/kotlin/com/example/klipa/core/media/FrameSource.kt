@@ -6,7 +6,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
 import android.media.MediaMetadataRetriever
-import android.net.Uri
+import androidx.core.graphics.scale
+import androidx.core.net.toUri
 import android.os.Build
 import android.os.Process
 import android.util.LruCache
@@ -95,7 +96,7 @@ class MediaFrameSource(context: Context) : FrameSource {
 
         private fun videoFrame(asset: MediaAsset, sourceTime: Double, maxSize: Int, option: Int): ImageBitmap? {
             val retriever = retrievers.getOrPut(asset.url) {
-                MediaMetadataRetriever().apply { setDataSource(appContext, Uri.parse(asset.url)) }
+                MediaMetadataRetriever().apply { setDataSource(appContext, asset.url.toUri()) }
             }
             val micros = (sourceTime.coerceAtLeast(0.0) * 1_000_000).toLong()
             val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
@@ -118,7 +119,7 @@ class MediaFrameSource(context: Context) : FrameSource {
     private fun still(asset: MediaAsset, maxSize: Int): ImageBitmap? {
         val key = "${asset.url}@$maxSize"
         stills.get(key)?.let { return it }
-        val uri = Uri.parse(asset.url)
+        val uri = asset.url.toUri()
         val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             // ImageDecoder applies EXIF orientation.
             ImageDecoder.decodeBitmap(ImageDecoder.createSource(resolver, uri)) { decoder, info, _ ->
@@ -142,7 +143,7 @@ class MediaFrameSource(context: Context) : FrameSource {
         val longSide = maxOf(bitmap.width, bitmap.height)
         if (longSide <= maxSize) return bitmap
         val ratio = maxSize.toFloat() / longSide
-        return Bitmap.createScaledBitmap(bitmap, (bitmap.width * ratio).toInt().coerceAtLeast(1), (bitmap.height * ratio).toInt().coerceAtLeast(1), true)
+        return bitmap.scale((bitmap.width * ratio).toInt().coerceAtLeast(1), (bitmap.height * ratio).toInt().coerceAtLeast(1))
     }
 
     private companion object {

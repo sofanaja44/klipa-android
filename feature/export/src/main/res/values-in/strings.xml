@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="export_title">Ekspor</string>
+    <string name="export_action">Ekspor</string>
+    <string name="export_summary">%1$s · %2$d×%3$d · %4$d fps</string>
+    <string name="export_resolution">Resolusi</string>
+    <string name="export_resolution_value">%1$dp</string>
+    <string name="export_estimate">%1$d×%2$d · sekitar %3$s · MP4 (H.264)</string>
+    <plurals name="export_missing">
+        <item quantity="other">%d klip kehilangan medianya dan akan dilewati.</item>
+    </plurals>
+    <string name="export_running">Mengekspor</string>
+    <string name="export_saving">Menyimpan ke Movies/Klipa…</string>
+    <string name="export_keep_open">Biarkan Klipa tetap terbuka sampai ekspor selesai.</string>
+    <string name="export_progress_description">Progres ekspor</string>
+    <string name="export_cancel">Batal</string>
+    <string name="export_done_gallery">Tersimpan di Movies/Klipa</string>
+    <string name="export_done_app">Tersimpan di Klipa</string>
+    <string name="export_done_app_hint">Klipa tidak bisa menambahkannya ke galeri. Bagikan untuk menyimpan salinannya.</string>
+    <string name="export_share">Bagikan</string>
+    <string name="export_play">Putar</string>
+    <string name="export_close">Selesai</string>
+    <string name="export_failed">Ekspor gagal</string>
+    <string name="export_failure_nothing">Tambahkan video atau foto ke timeline dulu. Teks dan audio saja belum bisa diekspor.</string>
+    <string name="export_failure_missing">Ada file media di proyek ini yang dipindah atau dihapus. Impor ulang lalu coba lagi.</string>
+    <string name="export_failure_unsupported">HP ini tidak bisa membaca salah satu file media.</string>
+    <string name="export_failure_encoder">HP ini gagal membuat video di resolusi ini. Coba resolusi yang lebih rendah.</string>
+    <string name="export_failure_storage">Video tidak bisa ditulis. Pastikan memori HP masih cukup.</string>
+    <string name="export_failure_unknown">Terjadi kesalahan saat mengekspor.</string>
+    <string name="export_retry">Coba lagi</string>
+    <string name="export_copy_details">Salin detail</string>
+</resources>

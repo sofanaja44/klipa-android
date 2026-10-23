@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="export_title">Export</string>
+    <string name="export_action">Export</string>
+    <!-- Duration, project width × height, frame rate. -->
+    <string name="export_summary">%1$s · %2$d×%3$d · %4$d fps</string>
+    <string name="export_resolution">Resolution</string>
+    <!-- A resolution by its short side, e.g. 1080p. -->
+    <string name="export_resolution_value">%1$dp</string>
+    <!-- Output width × height and the estimated file size. -->
+    <string name="export_estimate">%1$d×%2$d · about %3$s · MP4 (H.264)</string>
+    <plurals name="export_missing">
+        <item quantity="one">%d clip has missing media and will be left out.</item>
+        <item quantity="other">%d clips have missing media and will be left out.</item>
+    </plurals>
+    <string name="export_running">Exporting</string>
+    <string name="export_saving">Saving to Movies/Klipa…</string>
+    <string name="export_keep_open">Keep Klipa open until the export finishes.</string>
+    <string name="export_progress_description">Export progress</string>
+    <string name="export_cancel">Cancel</string>
+    <string name="export_done_gallery">Saved to Movies/Klipa</string>
+    <string name="export_done_app">Saved in Klipa</string>
+    <string name="export_done_app_hint">Klipa couldn\'t add it to your gallery. Share it to keep a copy.</string>
+    <string name="export_share">Share</string>
+    <string name="export_play">Play</string>
+    <string name="export_close">Done</string>
+    <string name="export_failed">Export failed</string>
+    <string name="export_failure_nothing">Add a video or photo to the timeline first. Text and audio alone can\'t be exported yet.</string>
+    <string name="export_failure_missing">A media file in this project was moved or deleted. Import it again and retry.</string>
+    <string name="export_failure_unsupported">This phone can\'t decode one of the media files.</string>
+    <string name="export_failure_encoder">This phone couldn\'t encode the video at this resolution. Try a lower one.</string>
+    <string name="export_failure_storage">The video couldn\'t be written. Check that the phone has free storage.</string>
+    <string name="export_failure_unknown">Something went wrong while exporting.</string>
+    <string name="export_retry">Try again</string>
+    <string name="export_copy_details">Copy details</string>
+</resources>
