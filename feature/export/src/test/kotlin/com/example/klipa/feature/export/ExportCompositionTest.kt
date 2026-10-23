@@ -13,7 +13,11 @@ import androidx.media3.effect.Presentation
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.Transformer
 import com.example.klipa.core.media.VideoLayering
+import com.example.klipa.core.model.Adjustments
+import com.example.klipa.core.model.ChromaKey
+import com.example.klipa.core.model.MaskShape
 import com.example.klipa.core.model.MediaKind
+import com.example.klipa.core.model.ShapeMask
 import com.example.klipa.core.model.Project
 import com.example.klipa.core.model.TextStyle
 import com.example.klipa.core.model.createClip
@@ -102,7 +106,17 @@ class ExportCompositionTest {
     @Test
     fun `Transformer accepts the export composition`() {
         val context = RuntimeEnvironment.getApplication()
-        for (p in listOf(project(), project(video.copy(fps = 60.0)))) {
+        val looked = project().let { p ->
+            p.copy(clips = p.clips.map { if (it.assetId == video.id) it.copy(adjustments = Adjustments(saturation = 0.0, blur = 8.0), chromaKey = ChromaKey(true, "#00ff00", 0.2, 0.1)) else it })
+        }
+        val layeredLook = looked.let { base ->
+            val overlay = base.tracks[1].copy(id = "overlay", name = "Video 2")
+            base.copy(
+                tracks = listOf(base.tracks[0], overlay) + base.tracks.drop(1),
+                clips = base.clips + createClip(video, "overlay", 1.0, base.fps).copy(duration = 2.0, mask = ShapeMask(MaskShape.Rectangle, 0.5, 0.5, 0.1, true)),
+            )
+        }
+        for (p in listOf(project(), project(video.copy(fps = 60.0)), looked, layeredLook)) {
             val built = assertNotNull(buildExportComposition(p, ExportSettings(720)))
             val transformer = Transformer.Builder(context).build()
             transformer.start(built.composition, File(context.cacheDir, "export-test.mp4").path)

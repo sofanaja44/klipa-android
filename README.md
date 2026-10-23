@@ -4,9 +4,10 @@ A native Android video editor. Kotlin, Jetpack Compose, and AndroidX Media3
 (ExoPlayer for preview, Transformer for export). The editing engine is ported
 from [ReaCut](https://github.com/Xiangyu-CAS/rea-capcut) (MIT).
 
-**Status:** milestones 1–5 (version 0.5.0). Import media, cut on a multi-track
-timeline with thumbnails and waveforms, play the edit back in real time with
-sound, and export it to an MP4 in the phone's gallery. The project autosaves.
+**Status:** milestones 1–6 (version 0.6.0). Import media, cut on a multi-track
+timeline with thumbnails and waveforms, grade clips with filters, chroma key and
+masks, play the edit back in real time with sound, and export it to an MP4 in
+the phone's gallery. The project autosaves.
 
 ## What works
 
@@ -19,6 +20,14 @@ sound, and export it to an MP4 in the phone's gallery. The project autosaves.
 - **Clip tools**: split at the playhead, speed (0.25×–4×), volume and mute,
   extract audio into a linked clip, unlink, duplicate, delete; add text and edit
   its words, size, color and weight. Each sheet session is one undo step.
+- **Looks** for video and photo clips: *Adjust* offers ReaCut's eight filter
+  presets plus brightness, contrast, saturation, color temperature and blur;
+  *Chroma key* removes a key color with tolerance and edge softness; *Mask*
+  keeps a centered rectangle or ellipse, with feather and invert. A custom GL
+  shader ports ReaCut's 8-bit pixel math (checked in WebGL against ReaCut's own
+  functions, `tools/shader-check`), so the preview and the export match. Look
+  and volume sliders apply to the playing (or paused) preview without
+  reloading the player.
 - **Tracks**: mute, hide, lock, reorder, delete from the track header menu.
 - **Real-time preview with sound** through Media3's `CompositionPlayer`, set
   up as in Media3's composition demo. With one video track it uses the
@@ -26,8 +35,7 @@ sound, and export it to an MP4 in the phone's gallery. The project autosaves.
   rotated and faded by per-clip effects. Several video tracks are composited
   (a Media3 path still in development); if that fails on a device the preview
   falls back to the bottom track, and then to decoded still frames. Crop,
-  brightness, contrast, saturation, speed, volume and fades apply; scrubbing
-  seeks the player.
+  looks, speed, volume and fades apply; scrubbing seeks the player.
 - **Export to MP4** (H.264 video, AAC audio) through Media3 `Transformer`, from
   the same composition the preview plays, with every video layer composited and
   titles drawn on top. Pick 480p, 720p or 1080p (up to the project's own size;
@@ -44,9 +52,10 @@ sound, and export it to an MP4 in the phone's gallery. The project autosaves.
   format.
 - Portrait and landscape layouts; English and Indonesian.
 
-Not yet: chroma key, masks, blur and color temperature are kept in the project
-but not rendered (milestone 6); text is drawn above all media regardless of
-track order; the project background color is not rendered behind media (gaps
+Not yet: a crop tool (crops in imported ReaCut projects are rendered); moving
+and scaling clips on the monitor; still frames (shown before playback starts, or
+if the preview falls back) show color adjustments but not chroma key, masks or
+blur; text is drawn above all media regardless of track order; the project background color is not rendered behind media (gaps
 are black); a project needs a video or photo to export; exports run while Klipa
 is open (no background service yet); one working project (no project list).
 
@@ -71,7 +80,7 @@ release needs its own key, kept out of the repository.
 3. ~~Compose timeline (tracks, clips, playhead, zoom, selection) with undo and transactions~~
 4. ~~Preview: real-time playback of all layers with sound~~
 5. ~~Export with Media3 Transformer: one track, then multi-track, effects and text~~
-6. Custom GL shaders: chroma key, mask, blur, temperature
+6. ~~Custom GL shaders: chroma key, mask, blur, temperature~~
 
 ## Engine
 
@@ -137,6 +146,7 @@ Requirements: JDK 17+, Android SDK with platform 37.
 ./gradlew testDebugUnitTest                      # ViewModel, timeline, composition, export, app smoke test
 ./gradlew :app:recordRoborazziDebug              # editor screenshots -> app/build/outputs/roborazzi
 ./gradlew lintDebug
+node tools/shader-check/check.js core/media/src/main/res/raw   # GLSL vs ReaCut's pixel math (needs Playwright)
 ```
 
 Screenshots are rendered by Robolectric on the JVM, so the UI can be reviewed

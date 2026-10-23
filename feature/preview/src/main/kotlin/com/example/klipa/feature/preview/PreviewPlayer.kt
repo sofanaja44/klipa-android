@@ -29,8 +29,12 @@ import androidx.media3.effect.MultipleInputVideoGraph
 import androidx.media3.transformer.CompositionPlayer
 import com.example.klipa.core.media.ProjectComposition
 import com.example.klipa.core.media.VideoLayering
+import com.example.klipa.core.media.LiveProject
 import com.example.klipa.core.media.buildComposition
+import com.example.klipa.core.model.Adjustments
+import com.example.klipa.core.model.ChromaKey
 import com.example.klipa.core.model.Project
+import com.example.klipa.core.model.ShapeMask
 import kotlin.math.abs
 import kotlin.math.roundToLong
 
@@ -70,6 +74,10 @@ class PreviewPlayer(
     private var surfaceView: SurfaceView? = null
     private var wantPlaying = false
     private var layeringFailed = false
+
+    /** Clip looks as last edited; the loaded composition reads them for every frame. */
+    private var live: LiveProject? = null
+    private var liveLooks: Map<String, Triple<Adjustments, ChromaKey?, ShapeMask?>> = emptyMap()
 
     var mode by mutableStateOf(PreviewMode.Idle)
         private set
@@ -129,7 +137,10 @@ class PreviewPlayer(
 
     private fun load(project: Project, seconds: Double) {
         try {
-            val built = buildComposition(project, allowLayering = !layeringFailed)
+            val live = live ?: LiveProject(project).also { live = it }
+            live.update(project)
+            liveLooks = looks(project)
+            val built = buildComposition(project, allowLayering = !layeringFailed, live = live)
             releasePlayer()
             if (built == null) {
                 mode = PreviewMode.Idle
@@ -151,6 +162,25 @@ class PreviewPlayer(
             revision++
         }
     }
+
+    /**
+     * Follows edits to clip looks (color, chroma key, mask, blur) and volume without
+     * reloading: the playing composition picks them up on its next frame or audio block,
+     * and a paused one draws its current frame again when a look changed. Edits that
+     * change what plays still need [setProject].
+     */
+    fun updateLive(project: Project) {
+        val live = live ?: return
+        live.update(project)
+        val looks = looks(project)
+        if (looks == liveLooks) return
+        liveLooks = looks
+        val player = player ?: return
+        if (!wantPlaying) player.seekTo(player.currentPosition)
+    }
+
+    private fun looks(project: Project): Map<String, Triple<Adjustments, ChromaKey?, ShapeMask?>> =
+        project.clips.associate { it.id to Triple(it.adjustments, it.chromaKey, it.mask) }
 
     fun play() {
         wantPlaying = true

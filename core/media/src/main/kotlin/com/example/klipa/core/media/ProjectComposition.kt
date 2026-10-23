@@ -16,10 +16,7 @@ import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.SpeedProvider
 import androidx.media3.common.util.Size
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.effect.Brightness
-import androidx.media3.effect.Contrast
 import androidx.media3.effect.Crop
-import androidx.media3.effect.HslAdjustment
 import androidx.media3.effect.MatrixTransformation
 import androidx.media3.effect.Presentation
 import androidx.media3.effect.RgbMatrix
@@ -44,9 +41,9 @@ import kotlin.math.sin
 // Builds the Media3 Composition for a project. Preview (CompositionPlayer) and export
 // (Transformer) both play this, so what you see is what renders.
 //
-// Each clip is cropped, color-corrected and fitted inside the project frame; then, per
-// frame, it is placed (position, scale, rotation) and faded (opacity, fades), with
-// keyframes evaluated at that frame's time. Media3 passes effects and the compositor
+// Each clip is cropped, given its look (chroma key, mask, color, blur) and fitted inside
+// the project frame; then, per frame, it is placed (position, scale, rotation) and faded
+// (opacity, fades), with keyframes evaluated at that frame's time. Media3 passes effects and the compositor
 // composition-relative timestamps, so a clip's local time is the timestamp minus its
 // start.
 
@@ -70,13 +67,15 @@ class ProjectComposition(val composition: Composition, val plan: CompositionPlan
  * Returns null when nothing in the project has media to play. With [allowLayering], a
  * project with several video layers composites them all; otherwise only the bottom one
  * is shown. [videoEffects] apply to the finished frame (after compositing), in order;
- * [hdrMode] is one of Composition's `HDR_MODE_` constants.
+ * [hdrMode] is one of Composition's `HDR_MODE_` constants. With [live], clip looks follow
+ * its latest edits while playing; without it they stay as in [project].
  */
 fun buildComposition(
     project: Project,
     allowLayering: Boolean = true,
     videoEffects: List<Effect> = emptyList(),
     hdrMode: Int = Composition.HDR_MODE_KEEP_HDR,
+    live: LiveProject? = null,
 ): ProjectComposition? {
     var plan = planComposition(project)
     val layering = if (allowLayering && plan.videoSequences.size > 1) VideoLayering.Layered else VideoLayering.BaseLayer
@@ -93,7 +92,7 @@ fun buildComposition(
         for (segment in sequence.segments) {
             when (segment) {
                 is Segment.Gap -> builder.addGap(segment.durationUs)
-                is Segment.Item -> builder.addItem(editedItem(project, segment, layering))
+                is Segment.Item -> builder.addItem(editedItem(project, segment, layering, live))
             }
         }
         builder.build()
@@ -104,7 +103,7 @@ fun buildComposition(
     return ProjectComposition(composition.build(), plan, layering)
 }
 
-private fun editedItem(project: Project, item: Segment.Item, layering: VideoLayering): EditedMediaItem {
+private fun editedItem(project: Project, item: Segment.Item, layering: VideoLayering, live: LiveProject?): EditedMediaItem {
     val clip = item.clip
     val asset = item.asset
     val mediaItem = MediaItem.Builder().setUri(asset.url)
@@ -131,8 +130,8 @@ private fun editedItem(project: Project, item: Segment.Item, layering: VideoLaye
         builder.setDurationUs(secondsToUs(asset.duration))
         if (clip.speed != 1.0) builder.setSpeed(ConstantSpeed(clip.speed.toFloat()))
     }
-    val audio = if (asset.carriesSoundForMix()) listOfNotNull(gainProcessor(clip, item.muted)) else emptyList()
-    val video = if (item.removeVideo) emptyList() else videoEffects(project, item, layering)
+    val audio = if (asset.carriesSoundForMix()) listOfNotNull(gainProcessor(clip, item.muted, live)) else emptyList()
+    val video = if (item.removeVideo) emptyList() else videoEffects(project, item, layering, live)
     if (audio.isNotEmpty() || video.isNotEmpty()) builder.setEffects(Effects(audio, video))
     return builder.build()
 }
@@ -145,37 +144,59 @@ private class ConstantSpeed(private val speed: Float) : SpeedProvider {
     override fun getNextSpeedChangeTimeUs(timeUs: Long): Long = C.TIME_UNSET
 }
 
-/** Volume, volume keyframes and audio fades; silence when [muted]; null at unity gain. */
-private fun gainProcessor(clip: Clip, muted: Boolean): AudioProcessor? {
+/**
+ * Volume, volume keyframes and audio fades; silence when [muted]; null at unity gain. With
+ * [live], the volume follows edits while playing.
+ */
+private fun gainProcessor(clip: Clip, muted: Boolean, live: LiveProject?): AudioProcessor? {
     if (muted) return GainAudioProcessor { 0f }
     val animated = clip.keyframes.any { it.property == KeyframeProperty.Volume } ||
         clip.audioFadeIn > 0 || clip.audioFadeOut > 0 || clip.audioFadeWindow != null
     if (!animated && clip.volume == 1.0) return null
-    if (!animated) {
+    if (!animated && live == null) {
         val gain = clip.volume.toFloat()
         return GainAudioProcessor { gain }
     }
     // Media3 changes speed before item audio processors run (in both CompositionPlayer and
     // Transformer), so the position is already clip-local timeline time.
     return GainAudioProcessor { positionUs ->
+        val current = live?.clip(clip.id) ?: clip
         val local = positionUs / 1_000_000.0
-        val volume = evaluateKeyframe(clip, KeyframeProperty.Volume, local) ?: clip.volume
-        (volume * evaluateFade(clip, local, FadeChannel.Audio)).toFloat()
+        val volume = evaluateKeyframe(current, KeyframeProperty.Volume, local) ?: current.volume
+        (volume * evaluateFade(current, local, FadeChannel.Audio)).toFloat()
     }
 }
 
-/** Crop, color, the fit to the project frame, and (for a base layer) placement and fades. */
-private fun videoEffects(project: Project, item: Segment.Item, layering: VideoLayering): List<Effect> = buildList {
+/** Crop, the look, the fit to the project frame, and (for a base layer) placement and fades. */
+private fun videoEffects(project: Project, item: Segment.Item, layering: VideoLayering, live: LiveProject?): List<Effect> = buildList {
     val clip = item.clip
     clip.crop?.let { crop ->
         // Crop takes normalized device coordinates: x and y in -1..1, y pointing up.
         add(Crop((crop.x * 2 - 1).toFloat(), ((crop.x + crop.width) * 2 - 1).toFloat(), (1 - (crop.y + crop.height) * 2).toFloat(), (1 - crop.y * 2).toFloat()))
     }
-    val adjust = clip.adjustments
-    if (adjust.brightness != 0.0) add(Brightness(adjust.brightness.toFloat().coerceIn(-1f, 1f)))
-    // ReaCut contrast and saturation are multipliers around 1; Media3 takes offsets from 0.
-    if (adjust.contrast != 1.0) add(Contrast((adjust.contrast - 1).toFloat().coerceIn(-1f, 1f)))
-    if (adjust.saturation != 1.0) add(HslAdjustment.Builder().adjustSaturation(((adjust.saturation - 1) * 100).toFloat().coerceIn(-100f, 100f)).build())
+    // The look and blur run on the cropped source, before it is scaled, in ReaCut's order.
+    val look = Look.of(clip)
+    val blurBucket = blurBucket(clip.adjustments.blur)
+    if (!look.isNeutral) {
+        val output = when {
+            layering == VideoLayering.BaseLayer -> LookOutput.OverBlack
+            blurBucket > 0 && look.cutsOut -> LookOutput.Premultiplied
+            else -> LookOutput.Straight
+        }
+        add(LookEffect({ live?.clip(clip.id)?.let(Look::of) ?: look }, output))
+    }
+    if (blurBucket > 0) {
+        // Blur radii are project pixels; frames are still at source resolution here.
+        val sourcePerProject = 1 / containScale(project, clip, item.asset)
+        val blur = clip.adjustments.blur
+        add(
+            LiveBlur(
+                sigma = { ((live?.clip(clip.id)?.adjustments?.blur ?: blur) * sourcePerProject).toFloat() },
+                scale = LiveBlur.scaleFor((bucketMaxBlur(blurBucket) * sourcePerProject).toFloat()),
+            ),
+        )
+        if (layering == VideoLayering.Layered && look.cutsOut) add(UnpremultiplyEffect)
+    }
     when (layering) {
         VideoLayering.Layered -> fitSize(project, clip, item.asset)?.let { (width, height) ->
             // The compositor places the fitted frame; its scale is the clip's own.
@@ -232,6 +253,13 @@ internal fun motionValues(project: Project, t: Transform): FloatArray {
         (-s * sx * aspect).toFloat(), (c * sy).toFloat(), (-2 * t.y / project.height).toFloat(),
         0f, 0f, 1f,
     )
+}
+
+/** Project pixels per source pixel once the clip is fitted inside the project frame. */
+private fun containScale(project: Project, clip: Clip, asset: MediaAsset): Double {
+    val sourceWidth = asset.width * (clip.crop?.width ?: 1.0)
+    val fitted = fitSize(project, clip, asset) ?: return 1.0
+    return fitted.first / sourceWidth
 }
 
 /**

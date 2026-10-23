@@ -20,6 +20,12 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import com.example.klipa.core.model.Adjustments
+import com.example.klipa.core.model.ChromaKey
+import com.example.klipa.core.model.Clip
+import com.example.klipa.core.model.MaskShape
+import com.example.klipa.core.model.ShapeMask
 import androidx.media3.transformer.Composition
 import com.example.klipa.feature.export.ExportEngine
 import com.example.klipa.feature.export.ExportSettings
@@ -55,6 +61,29 @@ class EditorScreenshotTest {
     @Test
     @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
     fun landscape() = capture(EditorState().copy(project = sampleProject(), playhead = 4.2, zoom = 38.0), "editor_landscape")
+
+    @Test
+    fun adjustSheet() = captureClipSheet("Adjust", "adjust_sheet") { it.copy(adjustments = Adjustments(brightness = -0.04, contrast = 1.22, saturation = 0.78, temperature = -0.08)) }
+
+    @Test
+    fun chromaKeySheet() = captureClipSheet("Chroma key", "chroma_key_sheet") { it.copy(chromaKey = ChromaKey(true, "#00ff00", 0.18, 0.08)) }
+
+    @Test
+    fun maskSheet() = captureClipSheet("Mask", "mask_sheet") { it.copy(mask = ShapeMask(MaskShape.Ellipse, 0.7, 0.85, 0.12, invert = false)) }
+
+    /** Selects the first shot, styled by [style], and opens its [tool] sheet. */
+    private fun captureClipSheet(tool: String, name: String, style: (Clip) -> Clip) {
+        val project = sampleProject().let { p ->
+            val shot = p.clips.first { it.name == "Harbor at dusk.mp4" }
+            p.copy(clips = p.clips.map { if (it.id == shot.id) style(it) else it })
+        }
+        val shot = project.clips.first { it.name == "Harbor at dusk.mp4" }
+        show(EditorState().copy(project = project, playhead = 4.2, zoom = 38.0, selectedIds = listOf(shot.id)))
+        compose.onNodeWithText(tool).performScrollTo().performClick()
+        compose.mainClock.advanceTimeBy(1000)
+        compose.waitForIdle()
+        captureSheet(name)
+    }
 
     @Test
     fun exportSettings() {

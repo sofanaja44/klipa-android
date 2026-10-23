@@ -30,7 +30,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import androidx.compose.foundation.border
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
+import androidx.compose.material.icons.rounded.Colorize
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Vignette
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.runtime.DisposableEffect
@@ -177,10 +180,12 @@ fun EditorScreen(
         onSystemPause = viewModel::pause,
     )
     // Reload the player once an edit that changes playback settles; renames, finished
-    // waveforms and drags in progress do not interrupt it.
+    // waveforms and drags in progress do not interrupt it. Sheets also hold an undo
+    // transaction, but their edits should show while the sheet is open.
     val signature = remember(state.project) { playbackSignature(state.project) }
-    LaunchedEffect(preview, signature, state.transactionOpen, exporting) {
-        if (!realTimePreview || state.transactionOpen) return@LaunchedEffect
+    val dragging = state.transactionOpen && openSheet == null
+    LaunchedEffect(preview, signature, dragging, exporting) {
+        if (!realTimePreview || dragging) return@LaunchedEffect
         if (exporting) {
             // The export needs the device's decoders and encoder; the preview hands them over.
             preview.unload()
@@ -188,6 +193,14 @@ fun EditorScreen(
         }
         delay(PREVIEW_RELOAD_DELAY_MS)
         preview.setProject(viewModel.state.value.project, viewModel.state.value.playhead)
+    }
+    // Look and volume edits reach the loaded composition directly, so a slider redraws the
+    // frame (or changes the sound) instead of reloading the player.
+    LaunchedEffect(preview) {
+        viewModel.state.map { it.project }.distinctUntilChanged().conflate().collect {
+            preview.updateLive(it)
+            delay(SEEK_INTERVAL_MS)
+        }
     }
     // While paused, the player follows the playhead, at most every couple of frames.
     LaunchedEffect(preview, state.playing, preview.active) {
@@ -283,6 +296,9 @@ fun EditorScreen(
             onSpeed = { speedSheet = true },
             onEditText = { openSheet = ClipSheet.Text },
             onVolume = { openSheet = ClipSheet.Volume },
+            onAdjust = { openSheet = ClipSheet.Adjust },
+            onChromaKey = { openSheet = ClipSheet.ChromaKey },
+            onMask = { openSheet = ClipSheet.Mask },
             onDetachAudio = viewModel::detachAudio,
             onUnlink = viewModel::unlinkSelected,
             onDuplicate = viewModel::duplicate,
@@ -339,6 +355,9 @@ fun EditorScreen(
         when (sheet) {
             ClipSheet.Text -> TextSheet(selected, onChange = viewModel::updateSelectedClip, onDismiss = { openSheet = null })
             ClipSheet.Volume -> VolumeSheet(selected, onChange = viewModel::updateSelectedClip, onDismiss = { openSheet = null })
+            ClipSheet.Adjust -> AdjustSheet(selected, onChange = viewModel::updateSelectedClip, onDismiss = { openSheet = null })
+            ClipSheet.ChromaKey -> ChromaKeySheet(selected, onChange = viewModel::updateSelectedClip, onDismiss = { openSheet = null })
+            ClipSheet.Mask -> MaskSheet(selected, onChange = viewModel::updateSelectedClip, onDismiss = { openSheet = null })
         }
     } else if (sheet != null) {
         openSheet = null
@@ -485,6 +504,9 @@ private fun EditorToolbar(
     onSpeed: () -> Unit,
     onEditText: () -> Unit,
     onVolume: () -> Unit,
+    onAdjust: () -> Unit,
+    onChromaKey: () -> Unit,
+    onMask: () -> Unit,
     onDetachAudio: () -> Unit,
     onUnlink: () -> Unit,
     onDuplicate: () -> Unit,
@@ -510,6 +532,8 @@ private fun EditorToolbar(
                 val underPlayhead = selected.any { state.playhead > it.start && state.playhead < it.start + it.duration }
                 ToolButton(Icons.Rounded.Check, R.string.tool_done, accent = true, onClick = onDone)
                 ToolButton(Icons.Rounded.ContentCut, R.string.tool_split, enabled = !locked && underPlayhead, onClick = onSplit)
+                val visual = primary.text == null && (asset?.kind == MediaKind.Video || asset?.kind == MediaKind.Image)
+                if (visual) ToolButton(Icons.Rounded.Tune, R.string.tool_adjust, enabled = !locked, onClick = onAdjust)
                 if (primary.text != null) {
                     ToolButton(Icons.Rounded.Edit, R.string.tool_edit_text, enabled = !locked, onClick = onEditText)
                 } else {
@@ -517,6 +541,10 @@ private fun EditorToolbar(
                     if (asset?.hasAudio == true && asset.kind != MediaKind.Image) {
                         ToolButton(Icons.AutoMirrored.Rounded.VolumeUp, R.string.tool_volume, enabled = !locked, onClick = onVolume)
                     }
+                }
+                if (visual) {
+                    ToolButton(Icons.Rounded.Colorize, R.string.tool_chroma_key, enabled = !locked, onClick = onChromaKey)
+                    ToolButton(Icons.Rounded.Vignette, R.string.tool_mask, enabled = !locked, onClick = onMask)
                 }
                 if (asset?.kind == MediaKind.Video && asset.hasAudio && primary.linkId == null) {
                     ToolButton(Icons.AutoMirrored.Rounded.CallSplit, R.string.tool_detach_audio, enabled = !locked, onClick = onDetachAudio)
@@ -581,7 +609,7 @@ private fun SpeedSheet(current: Double, onSpeed: (Double) -> Unit, onDismiss: ()
     }
 }
 
-private enum class ClipSheet { Text, Volume }
+private enum class ClipSheet { Text, Volume, Adjust, ChromaKey, Mask }
 
 /** Swatches offered for text color: white and black, the accent, and a few clear hues. */
 private val TextColors = listOf("#ffffff", "#000000", "#ffc23d", "#ff5a5f", "#4cc9f0", "#7bd88f")
@@ -662,7 +690,7 @@ private fun VolumeSheet(clip: Clip, onChange: ((Clip) -> Clip) -> Unit, onDismis
 }
 
 @Composable
-private fun LabeledSlider(
+internal fun LabeledSlider(
     label: String,
     value: Float,
     range: ClosedFloatingPointRange<Float>,

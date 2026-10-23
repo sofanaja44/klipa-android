@@ -29,6 +29,10 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.viewinterop.AndroidView
 import android.view.SurfaceView
 import com.example.klipa.core.media.FrameSource
+import com.example.klipa.core.media.Look
+import com.example.klipa.core.media.colorMatrix
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import com.example.klipa.core.media.parseArgb
 import com.example.klipa.core.media.renderText
 import androidx.compose.ui.graphics.asImageBitmap
@@ -71,8 +75,9 @@ fun monitorLayers(project: Project, time: Double): List<MonitorLayer> =
  *
  * With a live [player], media plays through its surface and text is drawn on top. Without
  * one (or until its first frame arrives) media layers are decoded still by still from
- * [frames]; those still frames show transform, opacity and fades, but not crop or color
- * adjustments. Text layers always draw above media, rendered by the same code as export.
+ * [frames]; those still frames show transform, opacity, fades and color adjustments, but
+ * not crop, chroma key, masks or blur. Text layers always draw above media, rendered by the
+ * same code as export.
  */
 @Composable
 fun ProgramMonitor(
@@ -138,12 +143,13 @@ private fun MediaLayer(layer: MonitorLayer, asset: MediaAsset, project: Project,
         frames.frame(asset, (sourceFrame + 0.5) / sourceFps, maxPx, exact)?.let { bitmap = it }
     }
     val image = bitmap ?: return
+    val colorFilter = remember(clip.adjustments) { Look.of(clip).colorMatrix()?.let { ColorFilter.colorMatrix(ColorMatrix(it)) } }
     Canvas(Modifier.fillMaxSize()) {
         withClipTransform(clip, project) { scale ->
             val contain = minOf(project.width.toFloat() / image.width, project.height.toFloat() / image.height) * scale
             val w = (image.width * contain).roundToInt()
             val h = (image.height * contain).roundToInt()
-            drawImage(image, dstOffset = IntOffset(-w / 2, -h / 2), dstSize = IntSize(w, h), alpha = layer.alpha)
+            drawImage(image, dstOffset = IntOffset(-w / 2, -h / 2), dstSize = IntSize(w, h), alpha = layer.alpha, colorFilter = colorFilter)
         }
     }
 }

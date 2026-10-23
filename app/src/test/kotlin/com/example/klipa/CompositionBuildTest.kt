@@ -9,7 +9,12 @@ import androidx.media3.common.util.ExperimentalApi
 import androidx.media3.common.util.UnstableApi
 import android.os.Looper
 import androidx.media3.common.C
+import com.example.klipa.core.media.LiveProject
 import com.example.klipa.core.media.ProjectComposition
+import com.example.klipa.core.model.Adjustments
+import com.example.klipa.core.model.ChromaKey
+import com.example.klipa.core.model.MaskShape
+import com.example.klipa.core.model.ShapeMask
 import com.example.klipa.core.media.VideoLayering
 import com.example.klipa.core.media.buildComposition
 import com.example.klipa.core.model.Transform
@@ -94,6 +99,24 @@ class CompositionBuildTest {
         assertEquals(VideoLayering.BaseLayer, base.layering)
         assertEquals(1, base.plan.videoSequences.size)
         load(base)
+    }
+
+    @Test
+    fun `looks, chroma keys, masks and blur play on one layer and composited`() {
+        val green = ChromaKey(enabled = true, color = "#00ff00", similarity = 0.1, blend = 0.05)
+        val mask = ShapeMask(MaskShape.Ellipse, width = 0.8, height = 0.8, feather = 0.1, invert = false)
+        val styled = project {
+            listOf(
+                createClip(video, it.tracks[1].id, 0.0, it.fps).copy(duration = 4.0, adjustments = Adjustments(contrast = 1.2, temperature = 0.3, blur = 6.0)),
+                createClip(video, it.tracks[1].id, 2.0, it.fps).copy(duration = 4.0, chromaKey = green, mask = mask, adjustments = Adjustments(blur = 2.0)),
+                createClip(still, it.tracks[1].id, 6.0, it.fps).copy(duration = 2.0, mask = mask),
+            )
+        }
+        val live = LiveProject(styled)
+        val layered = assertNotNull(buildComposition(styled, live = live))
+        assertEquals(VideoLayering.Layered, layered.layering)
+        load(layered)
+        load(assertNotNull(buildComposition(styled, allowLayering = false, live = live)))
     }
 
     @Test

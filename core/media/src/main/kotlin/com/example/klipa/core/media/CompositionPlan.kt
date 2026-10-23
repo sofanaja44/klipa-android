@@ -1,5 +1,6 @@
 package com.example.klipa.core.media
 
+import com.example.klipa.core.model.Adjustments
 import com.example.klipa.core.model.Clip
 import com.example.klipa.core.model.MediaAsset
 import com.example.klipa.core.model.MediaKind
@@ -150,12 +151,29 @@ private fun splitOverlaps(clips: List<Pair<Clip, MediaAsset>>): List<List<Pair<C
 /**
  * The parts of a project that change what the player plays. Names, timestamps, derived
  * metadata such as waveforms, and text clips (drawn over the player, not by it) are left
- * out, so typing a title or finishing a waveform does not reload playback.
+ * out, so typing a title or finishing a waveform does not reload playback. Look values
+ * and volume are read live (see [LiveProject]): only whether a clip has a look, whether it
+ * cuts out, its blur bucket and whether its volume is at unity count, so dragging a color
+ * or volume slider does not reload.
  */
 fun playbackSignature(project: Project): Project = project.copy(
     name = "",
     createdAt = "",
     updatedAt = "",
     assets = project.assets.map { it.copy(name = "", waveform = null, thumbnail = null, previewUrl = null, previewError = null) },
-    clips = project.clips.filter { it.text == null }.map { it.copy(name = "") },
+    clips = project.clips.filter { it.text == null }.map { clip ->
+        val look = Look.of(clip)
+        clip.copy(
+            name = "",
+            // A gain stage exists only away from unity volume.
+            volume = if (clip.volume == 1.0) 1.0 else 0.0,
+            adjustments = Adjustments(
+                brightness = if (look.isNeutral) 0.0 else 1.0,
+                temperature = if (look.cutsOut) 1.0 else 0.0,
+                blur = blurBucket(clip.adjustments.blur).toDouble(),
+            ),
+            chromaKey = null,
+            mask = null,
+        )
+    },
 )
