@@ -4,7 +4,9 @@ import com.example.klipa.core.edit.EditRejectedException
 import com.example.klipa.core.edit.EditorState
 import com.example.klipa.core.edit.TrimEdge
 import com.example.klipa.core.edit.setProject
+import com.example.klipa.core.edit.setSnapping
 import com.example.klipa.core.model.MediaKind
+import com.example.klipa.core.model.Transform
 import com.example.klipa.core.model.Project
 import com.example.klipa.core.model.createClip
 import com.example.klipa.core.model.createProject
@@ -36,6 +38,9 @@ class EditorViewModelTest {
 
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
+
+    /** The model fixture without its animation. */
+    private fun still(): Project = fixture().let { p -> p.copy(clips = p.clips.map { it.copy(keyframes = emptyList()) }) }
 
     /** The model fixture (one 8 s clip at 2 s on the video track) opened in the editor. */
     private fun viewModel(project: Project = fixture()) = EditorViewModel(EditorState().setProject(project))
@@ -71,6 +76,51 @@ class EditorViewModelTest {
         assertEquals(2.0, vm.state.value.project.clips[0].start)
         assertEquals(0, vm.state.value.past.size)
         assertFalse(vm.state.value.dirty)
+    }
+
+    @Test
+    fun `arranging a clip on the monitor is one undo step and snaps to the center`() {
+        val vm = viewModel(still())
+        val clip = vm.state.value.project.clips[0]
+        vm.select(clip.id)
+        vm.beginGesture()
+        vm.dragTransform(clip.id, dx = 300.0, dy = 5.0, scale = 0.6, rotation = 30.0, snap = 8.0)
+        vm.dragTransform(clip.id, dx = 6.0, dy = 250.0, scale = 1.02, rotation = 88.0, snap = 8.0)
+        vm.endGesture()
+        val t = vm.state.value.project.clips[0].transform
+        // Within 8 px of the center line, 3% of full size and 3° of a right angle: snapped.
+        assertEquals(listOf(0.0, 250.0, 1.0, 90.0), listOf(t.x, t.y, t.scale, t.rotation))
+        assertEquals(1, vm.state.value.past.size)
+        vm.undo()
+        assertEquals(Transform(), vm.state.value.project.clips[0].transform)
+    }
+
+    @Test
+    fun `without snapping a clip goes exactly where it is dragged`() {
+        val vm = EditorViewModel(EditorState().setProject(still()).setSnapping(false))
+        val clip = vm.state.value.project.clips[0]
+        vm.beginGesture()
+        vm.dragTransform(clip.id, dx = 6.0, dy = -3.0, scale = 1.02, rotation = 89.0, snap = 8.0)
+        vm.endGesture()
+        val t = vm.state.value.project.clips[0].transform
+        assertEquals(listOf(6.0, -3.0, 1.02, 89.0), listOf(t.x, t.y, t.scale, t.rotation))
+    }
+
+    @Test
+    fun `an animated clip snaps where the playhead shows it`() {
+        // The fixture animates x from 0 to 800 over its 8 s, starting at 2 s.
+        val vm = viewModel()
+        val clip = vm.state.value.project.clips[0]
+        vm.seek(2.0)
+        vm.beginGesture()
+        vm.dragTransform(clip.id, dx = 5.0, dy = 0.0, scale = 1.0, rotation = 0.0, snap = 8.0)
+        vm.endGesture()
+        // Shown at x = 0, dragged 5 px: snapped back, so nothing changed and no undo entry.
+        assertEquals(0, vm.state.value.past.size)
+        vm.beginGesture()
+        vm.dragTransform(clip.id, dx = 40.0, dy = 0.0, scale = 1.0, rotation = 0.0, snap = 8.0)
+        vm.endGesture()
+        assertEquals(listOf(40.0, 840.0), vm.state.value.project.clips[0].keyframes.map { it.value })
     }
 
     @Test

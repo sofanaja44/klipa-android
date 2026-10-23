@@ -55,17 +55,18 @@ class MainActivity : ComponentActivity() {
             KlipaTheme {
                 val scope = rememberCoroutineScope()
                 var importing by remember { mutableStateOf(false) }
-                fun import(uris: List<Uri>) {
+                fun import(uris: List<Uri>, overlay: Boolean = false) {
                     if (uris.isEmpty()) return
                     scope.launch {
                         importing = true
                         val result = withContext(Dispatchers.IO) { probe.probe(uris) }
-                        viewModel.importMedia(result.assets, result.failed)
+                        if (overlay) viewModel.importOverlay(result.assets, result.failed) else viewModel.importMedia(result.assets, result.failed)
                         importing = false
                     }
                 }
                 val pickMedia = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { import(it) }
                 val pickAudio = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { import(it) }
+                val pickOverlay = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { import(it, overlay = true) }
                 EditorScreen(
                     viewModel = viewModel,
                     exporter = exporter,
@@ -73,6 +74,7 @@ class MainActivity : ComponentActivity() {
                     importing = importing,
                     onPickMedia = { pickMedia.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
                     onPickAudio = { pickAudio.launch(arrayOf("audio/*")) },
+                    onPickOverlay = { pickOverlay.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
                 )
             }
         }

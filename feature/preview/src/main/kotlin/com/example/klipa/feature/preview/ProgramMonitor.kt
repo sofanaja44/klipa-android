@@ -78,6 +78,8 @@ fun monitorLayers(project: Project, time: Double): List<MonitorLayer> =
  * [frames]; those still frames show transform, opacity, fades and color adjustments, but
  * not crop, chroma key, masks or blur. Text layers always draw above media, rendered by the
  * same code as export.
+ *
+ * With [actions], clips can be selected and arranged by touch; [selectedId] is outlined.
  */
 @Composable
 fun ProgramMonitor(
@@ -88,6 +90,8 @@ fun ProgramMonitor(
     modifier: Modifier = Modifier,
     player: PreviewPlayer? = null,
     playing: Boolean = false,
+    selectedId: String? = null,
+    actions: MonitorActions? = null,
 ) {
     val colors = Klipa.colors
     BoxWithConstraints(modifier.background(colors.canvas), contentAlignment = Alignment.Center) {
@@ -125,6 +129,9 @@ fun ProgramMonitor(
                         MediaLayer(layer, asset, project, frames, maxPx, exact = !playing)
                     }
                 }
+            }
+            if (actions != null) {
+                MonitorEditing(project, time, selectedId, actions, projectPerPx = 1 / textScale)
             }
         }
     }

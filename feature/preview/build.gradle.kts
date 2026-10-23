@@ -19,6 +19,9 @@ android {
     buildFeatures {
         compose = true
     }
+
+    // Media3 types touch android.util.Pair in static initializers; let the stubs return defaults.
+    testOptions.unitTests.isReturnDefaultValues = true
 }
 
 dependencies {
@@ -27,4 +30,8 @@ dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.media3.exoplayer)
+
+    testImplementation(testFixtures(project(":core:model")))
+    testImplementation(kotlin("test-junit"))
+    testImplementation(libs.junit4)
 }

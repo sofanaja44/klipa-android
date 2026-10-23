@@ -32,6 +32,7 @@ import androidx.compose.foundation.border
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Colorize
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.PictureInPicture
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Vignette
 import androidx.compose.material3.OutlinedTextField
@@ -119,6 +120,7 @@ import com.example.klipa.core.model.formatTime
 import com.example.klipa.core.model.projectDuration
 import com.example.klipa.core.media.FrameSource
 import com.example.klipa.core.media.WaveformExtractor
+import com.example.klipa.feature.preview.MonitorActions
 import com.example.klipa.feature.preview.ProgramMonitor
 import com.example.klipa.feature.preview.parseColor
 import com.example.klipa.feature.preview.rememberPreviewPlayer
@@ -155,6 +157,7 @@ fun EditorScreen(
     onPickMedia: () -> Unit,
     onPickAudio: () -> Unit,
     realTimePreview: Boolean = true,
+    onPickOverlay: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
     val colors = Klipa.colors
@@ -259,6 +262,23 @@ fun EditorScreen(
         }
     }
 
+    // Touching the monitor selects clips and arranges the selected one.
+    val monitorActions = remember(viewModel) {
+        object : MonitorActions {
+            override fun select(clipId: String?) = if (clipId == null) viewModel.clearSelection() else viewModel.select(clipId)
+
+            override fun open(clipId: String) {
+                if (viewModel.state.value.project.clips.find { it.id == clipId }?.text != null) openSheet = ClipSheet.Text
+            }
+
+            override fun beginTransform() = viewModel.beginGesture()
+
+            override fun transform(clipId: String, dx: Double, dy: Double, scale: Double, rotation: Double, snap: Double) =
+                viewModel.dragTransform(clipId, dx, dy, scale, rotation, snap)
+
+            override fun endTransform() = viewModel.endGesture()
+        }
+    }
     val monitor = @Composable { modifier: Modifier ->
         ProgramMonitor(
             project = state.project,
@@ -268,6 +288,8 @@ fun EditorScreen(
             modifier = modifier,
             player = preview,
             playing = state.playing,
+            selectedId = state.selectedIds.firstOrNull(),
+            actions = monitorActions,
         )
     }
     val importingDescription = stringResource(R.string.importing)
@@ -289,6 +311,7 @@ fun EditorScreen(
         EditorToolbar(
             state = state,
             onPickMedia = onPickMedia,
+            onPickOverlay = onPickOverlay,
             onPickAudio = onPickAudio,
             onAddText = viewModel::addText,
             onDone = viewModel::clearSelection,
@@ -497,6 +520,7 @@ private fun TransportBar(state: EditorState, onTogglePlay: () -> Unit) {
 private fun EditorToolbar(
     state: EditorState,
     onPickMedia: () -> Unit,
+    onPickOverlay: () -> Unit,
     onPickAudio: () -> Unit,
     onAddText: () -> Unit,
     onDone: () -> Unit,
@@ -524,6 +548,7 @@ private fun EditorToolbar(
         ) {
             if (primary == null) {
                 ToolButton(Icons.Rounded.VideoLibrary, R.string.tool_media, onClick = onPickMedia)
+                ToolButton(Icons.Rounded.PictureInPicture, R.string.tool_overlay, onClick = onPickOverlay)
                 ToolButton(Icons.Rounded.MusicNote, R.string.tool_audio, onClick = onPickAudio)
                 ToolButton(Icons.Rounded.TextFields, R.string.tool_text, onClick = onAddText)
             } else {

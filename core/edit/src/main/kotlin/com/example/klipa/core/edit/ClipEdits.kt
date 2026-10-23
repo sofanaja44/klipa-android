@@ -119,6 +119,42 @@ fun changeClipSpeed(project: Project, clipId: String, speed: Double): Project {
     return project.copy(clips = project.clips.map { if (it.id == clipId) next else it })
 }
 
+/** ReaCut's bounds for a clip's scale. */
+private const val MIN_SCALE = 0.000001
+private const val MAX_SCALE = 10.0
+
+/**
+ * Moves a clip by [dx], [dy] project pixels, scales it by [scale] and turns it by
+ * [rotation] degrees, as a drag on the monitor does. Keyframes of each changed property
+ * move with it (shifted, or scaled for scale), so an animation keeps its path. Scales stay
+ * within 0.000001–10. Clips on locked tracks do not move.
+ */
+fun transformClip(project: Project, clipId: String, dx: Double = 0.0, dy: Double = 0.0, scale: Double = 1.0, rotation: Double = 0.0): Project {
+    val clip = project.clips.find { it.id == clipId }
+    if (clip == null || project.isTrackLocked(clip) || !(dx.isFinite() && dy.isFinite() && rotation.isFinite()) ||
+        !scale.isFinite() || scale <= 0 || (dx == 0.0 && dy == 0.0 && scale == 1.0 && rotation == 0.0)
+    ) return project
+    fun scaled(value: Double) = (value * scale).coerceIn(MIN_SCALE, MAX_SCALE)
+    val next = clip.copy(
+        transform = clip.transform.copy(
+            x = clip.transform.x + dx,
+            y = clip.transform.y + dy,
+            scale = scaled(clip.transform.scale),
+            rotation = clip.transform.rotation + rotation,
+        ),
+        keyframes = clip.keyframes.map { key ->
+            when (key.property) {
+                KeyframeProperty.X -> key.copy(value = key.value + dx)
+                KeyframeProperty.Y -> key.copy(value = key.value + dy)
+                KeyframeProperty.Scale -> key.copy(value = scaled(key.value))
+                KeyframeProperty.Rotation -> key.copy(value = key.value + rotation)
+                else -> key
+            }
+        },
+    )
+    return project.copy(clips = project.clips.map { if (it.id == clipId) next else it })
+}
+
 // Unlike the linked edits, a missing track does not count as locked here (as in ReaCut).
 private fun Project.isTrackLocked(clip: Clip): Boolean = tracks.find { it.id == clip.trackId }?.locked == true
 

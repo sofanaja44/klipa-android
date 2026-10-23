@@ -56,6 +56,14 @@ class EditorScreenshotTest {
     }, "editor_editing")
 
     @Test
+    fun arrangingATitle() = capture(EditorState().copy(project = sampleProject(), playhead = 4.2, zoom = 38.0).let { s ->
+        // The title, turned a little and moved off center, is outlined on the monitor.
+        val title = s.project.clips.first { it.name == "Title" }
+        val project = s.project.copy(clips = s.project.clips.map { if (it.id == title.id) it.copy(transform = it.transform.copy(x = -420.0, rotation = -6.0, scale = 0.8)) else it })
+        s.copy(project = project, selectedIds = listOf(title.id))
+    }, "editor_arrange")
+
+    @Test
     fun emptyProject() = capture(EditorState(), "editor_empty")
 
     @Test

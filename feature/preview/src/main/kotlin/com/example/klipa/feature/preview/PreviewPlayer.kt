@@ -33,8 +33,10 @@ import com.example.klipa.core.media.LiveProject
 import com.example.klipa.core.media.buildComposition
 import com.example.klipa.core.model.Adjustments
 import com.example.klipa.core.model.ChromaKey
+import com.example.klipa.core.model.Keyframe
 import com.example.klipa.core.model.Project
 import com.example.klipa.core.model.ShapeMask
+import com.example.klipa.core.model.Transform
 import kotlin.math.abs
 import kotlin.math.roundToLong
 
@@ -75,9 +77,9 @@ class PreviewPlayer(
     private var wantPlaying = false
     private var layeringFailed = false
 
-    /** Clip looks as last edited; the loaded composition reads them for every frame. */
+    /** Clips as last edited; the loaded composition reads placement and looks per frame. */
     private var live: LiveProject? = null
-    private var liveLooks: Map<String, Triple<Adjustments, ChromaKey?, ShapeMask?>> = emptyMap()
+    private var liveVisuals: Map<String, Visuals> = emptyMap()
 
     var mode by mutableStateOf(PreviewMode.Idle)
         private set
@@ -139,7 +141,7 @@ class PreviewPlayer(
         try {
             val live = live ?: LiveProject(project).also { live = it }
             live.update(project)
-            liveLooks = looks(project)
+            liveVisuals = visuals(project)
             val built = buildComposition(project, allowLayering = !layeringFailed, live = live)
             releasePlayer()
             if (built == null) {
@@ -164,23 +166,32 @@ class PreviewPlayer(
     }
 
     /**
-     * Follows edits to clip looks (color, chroma key, mask, blur) and volume without
-     * reloading: the playing composition picks them up on its next frame or audio block,
-     * and a paused one draws its current frame again when a look changed. Edits that
-     * change what plays still need [setProject].
+     * Follows edits to clip placement, looks (color, chroma key, mask, blur) and volume
+     * without reloading: the playing composition picks them up on its next frame or audio
+     * block, and a paused one draws its current frame again when the picture changed.
+     * Edits that change what plays still need [setProject].
      */
     fun updateLive(project: Project) {
         val live = live ?: return
         live.update(project)
-        val looks = looks(project)
-        if (looks == liveLooks) return
-        liveLooks = looks
+        val visuals = visuals(project)
+        if (visuals == liveVisuals) return
+        liveVisuals = visuals
         val player = player ?: return
         if (!wantPlaying) player.seekTo(player.currentPosition)
     }
 
-    private fun looks(project: Project): Map<String, Triple<Adjustments, ChromaKey?, ShapeMask?>> =
-        project.clips.associate { it.id to Triple(it.adjustments, it.chromaKey, it.mask) }
+    /** What a clip looks like and where it sits: everything the player reads live. */
+    private data class Visuals(
+        val transform: Transform,
+        val keyframes: List<Keyframe>,
+        val adjustments: Adjustments,
+        val chromaKey: ChromaKey?,
+        val mask: ShapeMask?,
+    )
+
+    private fun visuals(project: Project): Map<String, Visuals> =
+        project.clips.associate { it.id to Visuals(it.transform, it.keyframes, it.adjustments, it.chromaKey, it.mask) }
 
     fun play() {
         wantPlaying = true

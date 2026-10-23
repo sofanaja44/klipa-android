@@ -98,7 +98,7 @@ fun buildComposition(
         builder.build()
     }
     val composition = Composition.Builder(sequences).setHdrMode(hdrMode)
-    if (layering == VideoLayering.Layered) composition.setVideoCompositorSettings(ProjectCompositorSettings(project, plan))
+    if (layering == VideoLayering.Layered) composition.setVideoCompositorSettings(ProjectCompositorSettings(project, plan, live))
     if (videoEffects.isNotEmpty()) composition.setEffects(Effects(emptyList(), videoEffects))
     return ProjectComposition(composition.build(), plan, layering)
 }
@@ -203,10 +203,17 @@ private fun videoEffects(project: Project, item: Segment.Item, layering: VideoLa
             add(Presentation.createForWidthAndHeight(width, height, Presentation.LAYOUT_STRETCH_TO_FIT))
         }
         VideoLayering.BaseLayer -> {
-            // Fit inside a project-sized frame, then move and fade within it.
+            // Fit inside a project-sized frame, then move and fade within it. A live preview
+            // always places the clip, so moving it on the monitor never needs a reload; the
+            // matrices fold into one pass.
             add(Presentation.createForWidthAndHeight(project.width, project.height, Presentation.LAYOUT_SCALE_TO_FIT))
-            if (hasMotion(clip)) {
-                add(MatrixTransformation { timeUs -> Matrix().apply { setValues(motionValues(project, evaluateKeyframes(clip, item.localSeconds(timeUs)).transform)) } })
+            if (live != null || hasMotion(clip)) {
+                add(
+                    MatrixTransformation { timeUs ->
+                        val current = live?.clip(clip.id) ?: clip
+                        Matrix().apply { setValues(motionValues(project, evaluateKeyframes(current, item.localSeconds(timeUs)).transform)) }
+                    },
+                )
             }
             if (hasFade(clip)) {
                 add(RgbMatrix { timeUs, _ -> brightnessScale(layerAlpha(clip, item.localSeconds(timeUs))) })
@@ -219,7 +226,7 @@ private fun videoEffects(project: Project, item: Segment.Item, layering: VideoLa
 private fun Segment.Item.localSeconds(timeUs: Long): Double =
     ((timeUs - startUs) / 1_000_000.0).coerceIn(0.0, clip.duration)
 
-private val MotionProperties = setOf(KeyframeProperty.X, KeyframeProperty.Y, KeyframeProperty.Scale, KeyframeProperty.Rotation)
+internal val MotionProperties = setOf(KeyframeProperty.X, KeyframeProperty.Y, KeyframeProperty.Scale, KeyframeProperty.Rotation)
 
 private fun hasMotion(clip: Clip): Boolean = clip.transform.copy(opacity = 1.0) != Transform() ||
     clip.keyframes.any { it.property in MotionProperties }
@@ -266,7 +273,7 @@ private fun containScale(project: Project, clip: Clip, asset: MediaAsset): Doubl
  * The size, in project pixels, of the clip's (cropped) frame fitted inside the project
  * frame. Frames are resized to it up front so the compositor's scale is the clip's own.
  */
-internal fun fitSize(project: Project, clip: Clip, asset: MediaAsset): kotlin.Pair<Int, Int>? {
+fun fitSize(project: Project, clip: Clip, asset: MediaAsset): kotlin.Pair<Int, Int>? {
     val sourceWidth = asset.width * (clip.crop?.width ?: 1.0)
     val sourceHeight = asset.height * (clip.crop?.height ?: 1.0)
     if (sourceWidth <= 0 || sourceHeight <= 0) return null
@@ -277,16 +284,20 @@ internal fun fitSize(project: Project, clip: Clip, asset: MediaAsset): kotlin.Pa
 /**
  * Places each layer per frame. Input ids are sequence indices; video sequences come
  * first in the plan, so they match. Layers with no clip at a time are fully transparent,
- * so blank gap frames never hide the tracks below.
+ * so blank gap frames never hide the tracks below. With [live], placement follows edits.
  */
-internal class ProjectCompositorSettings(private val project: Project, plan: CompositionPlan) : VideoCompositorSettings {
+internal class ProjectCompositorSettings(
+    private val project: Project,
+    plan: CompositionPlan,
+    private val live: LiveProject? = null,
+) : VideoCompositorSettings {
     private val layers = plan.videoSequences
 
     override fun getOutputSize(inputSizes: List<Size>): Size = Size(project.width, project.height)
 
     override fun getOverlaySettings(inputId: Int, presentationTimeUs: Long): OverlaySettings {
         val item = layers.getOrNull(inputId)?.itemAt(presentationTimeUs) ?: return HiddenOverlay
-        return layerOverlay(project, item.clip, item.localSeconds(presentationTimeUs))
+        return layerOverlay(project, live?.clip(item.clip.id) ?: item.clip, item.localSeconds(presentationTimeUs))
     }
 }
 

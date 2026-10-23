@@ -4,15 +4,24 @@ A native Android video editor. Kotlin, Jetpack Compose, and AndroidX Media3
 (ExoPlayer for preview, Transformer for export). The editing engine is ported
 from [ReaCut](https://github.com/Xiangyu-CAS/rea-capcut) (MIT).
 
-**Status:** milestones 1–6 (version 0.6.0). Import media, cut on a multi-track
-timeline with thumbnails and waveforms, grade clips with filters, chroma key and
-masks, play the edit back in real time with sound, and export it to an MP4 in
-the phone's gallery. The project autosaves.
+**Status:** milestones 1–6 plus monitor editing (version 0.7.0). Import media,
+cut on a multi-track timeline with thumbnails and waveforms, arrange titles and
+picture-in-picture overlays right on the monitor, grade clips with filters,
+chroma key and masks, play the edit back in real time with sound, and export it
+to an MP4 in the phone's gallery. The project autosaves.
 
 ## What works
 
 - **Import** video, stills and audio (photo picker / document picker). Media is
-  inserted at the playhead and ripples later clips.
+  inserted at the playhead and ripples later clips. **Overlay** adds photos and
+  videos as picture-in-picture instead: on a video track above the main one
+  (a new one when none is free), at half size, without moving other clips.
+- **Arrange on the monitor**: tap a clip or title to select it (tap a selected
+  title again to edit its words, tap empty frame to deselect), drag the
+  selected clip to move it, pinch with two fingers to resize and rotate it. It
+  snaps to the frame's center lines, to 100% and to right angles; animated
+  properties move their whole animation; each gesture is one undo step. The
+  preview follows without reloading.
 - **Timeline** with a fixed center playhead: drag to scrub (with fling), pinch
   to zoom, tap to select, drag a selected clip's edge to trim, long-press to
   move a clip in time or onto another track. Trims and moves snap to the
@@ -52,8 +61,8 @@ the phone's gallery. The project autosaves.
   format.
 - Portrait and landscape layouts; English and Indonesian.
 
-Not yet: a crop tool (crops in imported ReaCut projects are rendered); moving
-and scaling clips on the monitor; still frames (shown before playback starts, or
+Not yet: a crop tool (crops in imported ReaCut projects are rendered); editing
+keyframes; still frames (shown before playback starts, or
 if the preview falls back) show color adjustments but not chroma key, masks or
 blur; text is drawn above all media regardless of track order; the project background color is not rendered behind media (gaps
 are black); a project needs a video or photo to export; exports run while Klipa

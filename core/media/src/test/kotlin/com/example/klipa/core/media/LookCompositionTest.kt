@@ -11,17 +11,20 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.GaussianFunction
+import androidx.media3.effect.MatrixTransformation
 import androidx.media3.effect.Presentation
 import com.example.klipa.core.model.Adjustments
 import com.example.klipa.core.model.ChromaKey
 import com.example.klipa.core.model.Clip
 import com.example.klipa.core.model.Project
+import com.example.klipa.core.model.Transform
 import com.example.klipa.core.model.createClip
 import com.example.klipa.core.model.createProject
 import com.example.klipa.core.model.testAsset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import org.junit.runner.RunWith
@@ -96,6 +99,40 @@ class LookCompositionTest {
         live.update(p.copy(clips = listOf(clip.copy(adjustments = Adjustments(saturation = 1.8, blur = 4.0)))))
         assertEquals(1.8, look.look().saturation)
         assertEquals(GaussianFunction(4f, 3f), blur.getConvolution(0))
+    }
+
+    @Test
+    fun `placement follows live edits on one layer and composited`() {
+        val p = project({ it })
+        val clip = p.clips.single()
+        val live = LiveProject(p)
+        // A live preview always places a single layer, even before it has moved.
+        val matrix = assertIs<MatrixTransformation>(effectsOf(p, clip.id, live).last())
+        assertTrue(effectsOf(p, clip.id).none { it is MatrixTransformation && it !is Presentation })
+        live.update(p.copy(clips = listOf(clip.copy(transform = Transform(x = 192.0)))))
+        val values = FloatArray(9).also { matrix.getMatrix(1_000_000).getValues(it) }
+        // 192 px of a 1920 px frame is a fifth of the way to its edge in device coordinates.
+        assertEquals(0.2f, values[2], 1e-6f)
+
+        val layered = project({ it }, overlay = true)
+        val overlay = layered.clips.last()
+        val layeredLive = LiveProject(layered)
+        val built = assertNotNull(buildComposition(layered, live = layeredLive))
+        val settings = built.composition.videoCompositorSettings
+        layeredLive.update(layered.copy(clips = layered.clips.map { if (it.id == overlay.id) it.copy(transform = Transform(x = 960.0, scale = 0.5)) else it }))
+        val placed = assertIs<LayerOverlay>(settings.getOverlaySettings(0, 1_000_000))
+        assertEquals(1f, placed.anchorX)
+        assertEquals(0.5f, placed.scaleX)
+    }
+
+    @Test
+    fun `placement is live, so moving a clip does not reload playback`() {
+        val p = project({ it })
+        val clip = p.clips.single()
+        val moved = p.copy(clips = listOf(clip.copy(transform = Transform(x = 300.0, y = -20.0, scale = 0.4, rotation = 12.0))))
+        assertEquals(playbackSignature(p), playbackSignature(moved))
+        val faded = p.copy(clips = listOf(clip.copy(transform = Transform(opacity = 0.5))))
+        assertNotEquals(playbackSignature(p), playbackSignature(faded))
     }
 
     @Test

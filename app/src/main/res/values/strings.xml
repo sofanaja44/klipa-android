@@ -70,4 +70,5 @@
     <string name="mask_height">Height</string>
     <string name="mask_feather">Feather</string>
     <string name="mask_invert">Invert</string>
+    <string name="tool_overlay">Overlay</string>
 </resources>

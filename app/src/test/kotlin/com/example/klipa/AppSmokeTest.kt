@@ -9,6 +9,12 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pinch
 import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipe
+import androidx.compose.ui.test.click
+import androidx.lifecycle.ViewModelProvider
+import com.example.klipa.feature.timeline.EditorViewModel
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import androidx.compose.ui.geometry.Offset
 import org.junit.Rule
 import org.junit.Test
@@ -51,5 +57,30 @@ class AppSmokeTest {
         compose.onNodeWithText("Your timeline is empty").assertExists()
         compose.onNodeWithContentDescription("Undo").assertIsEnabled().performClick()
         compose.onNodeWithText("Your timeline is empty").assertDoesNotExist()
+    }
+
+    @Test
+    fun `arrange a title on the monitor`() {
+        val editor = ViewModelProvider(compose.activity)[EditorViewModel::class.java]
+        compose.onNodeWithText("Text").performClick()
+        val monitor = compose.onNodeWithContentDescription(compose.activity.getString(R.string.monitor_description))
+        fun title() = editor.state.value.project.clips.single { it.text != null }
+
+        // The new title is selected and sits in the center: drag it right.
+        monitor.performTouchInput { swipe(center, center + Offset(width * 0.25f, 0f), durationMillis = 300) }
+        compose.waitForIdle()
+        assertTrue(title().transform.x > 300, "moved to ${title().transform.x}")
+        assertEquals(0.0, title().transform.y, "snapped to the center line")
+        compose.onNodeWithContentDescription("Undo").performClick()
+        assertEquals(0.0, title().transform.x)
+
+        // Tapping empty frame clears the selection; tapping the title selects it again,
+        // and tapping it once more opens its words for editing.
+        monitor.performTouchInput { click(Offset(width * 0.05f, height * 0.1f)) }
+        compose.onNodeWithText("Done").assertDoesNotExist()
+        monitor.performTouchInput { click(center) }
+        compose.onNodeWithText("Done").assertExists()
+        monitor.performTouchInput { click(center) }
+        compose.onNodeWithText("Enter text").assertExists()
     }
 }

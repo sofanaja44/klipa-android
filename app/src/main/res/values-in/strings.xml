@@ -69,4 +69,5 @@
     <string name="mask_height">Tinggi</string>
     <string name="mask_feather">Haluskan tepi</string>
     <string name="mask_invert">Balik</string>
+    <string name="tool_overlay">Overlay</string>
 </resources>

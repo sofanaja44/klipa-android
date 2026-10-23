@@ -20,6 +20,7 @@ import com.example.klipa.core.edit.endTransaction
 import com.example.klipa.core.edit.linkedIds
 import com.example.klipa.core.edit.moveLinked
 import com.example.klipa.core.edit.placeAsset
+import com.example.klipa.core.edit.placeOverlays
 import com.example.klipa.core.edit.redo
 import com.example.klipa.core.edit.reorderTrack
 import com.example.klipa.core.edit.seek
@@ -28,6 +29,7 @@ import com.example.klipa.core.edit.setPlaying
 import com.example.klipa.core.edit.setProject
 import com.example.klipa.core.edit.setZoom
 import com.example.klipa.core.edit.split
+import com.example.klipa.core.edit.transformClip
 import com.example.klipa.core.edit.trimLinked
 import com.example.klipa.core.edit.undo
 import com.example.klipa.core.edit.unlinkSelected
@@ -41,6 +43,7 @@ import com.example.klipa.core.model.MediaKind
 import com.example.klipa.core.model.Project
 import com.example.klipa.core.model.Track
 import com.example.klipa.core.model.end
+import com.example.klipa.core.model.evaluateKeyframes
 import com.example.klipa.core.model.projectDuration
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.channels.Channel
@@ -54,6 +57,8 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /** Something the editor tells the user once, e.g. in a snackbar. */
 sealed interface EditorMessage {
@@ -249,6 +254,22 @@ class EditorViewModel(
         }
     }
 
+    /**
+     * Adds media as picture-in-picture overlays at the playhead, on a video track above the
+     * main one, and selects the last so it can be arranged on the monitor. One undo step.
+     */
+    fun importOverlay(assets: List<MediaAsset>, failed: Int = 0) {
+        if (failed > 0) _messages.trySend(EditorMessage.ImportFailed(failed))
+        if (assets.isEmpty()) return
+        edit { start ->
+            val s = start.beginTransaction().setPlaying(false).addAssets(assets)
+            val media = assets.map { incoming -> s.project.assets.first { it.path == incoming.path } }.map { asset ->
+                asset.id to SourceRange(0.0, if (asset.kind == MediaKind.Image) STILL_DURATION_SECONDS else asset.duration)
+            }
+            s.placeOverlays(media).endTransaction()
+        }
+    }
+
     // Gestures
 
     /** Starts a drag; pauses playback and opens an undo transaction. */
@@ -288,6 +309,32 @@ class EditorViewModel(
         _state.value = _state.value.commit(moveLinked(base.project, listOf(clipId), adjusted, trackId))
     }
 
+    /**
+     * Moves, scales and turns a clip on the monitor from where the gesture started: by
+     * [dx], [dy] project pixels, [scale] times and [rotation] degrees clockwise. With
+     * snapping on, the clip's center snaps to the frame's center lines within [snap]
+     * pixels, its scale to 100% and its rotation to right angles. Keyframed properties
+     * move their whole animation.
+     */
+    fun dragTransform(clipId: String, dx: Double, dy: Double, scale: Double, rotation: Double, snap: Double) {
+        val base = gestureStart ?: return
+        val clip = base.project.clips.find { it.id == clipId } ?: return
+        // What the monitor shows at the playhead, which keyframes may differ from the base values.
+        val shown = evaluateKeyframes(clip, base.playhead - clip.start).transform
+        var x = shown.x + dx
+        var y = shown.y + dy
+        var size = shown.scale * scale
+        var angle = shown.rotation + rotation
+        if (base.snapping) {
+            if (abs(x) <= snap) x = 0.0
+            if (abs(y) <= snap) y = 0.0
+            if (abs(size - 1) <= SCALE_SNAP) size = 1.0
+            val square = (angle / 90).roundToInt() * 90.0
+            if (abs(angle - square) <= ROTATION_SNAP_DEGREES) angle = square
+        }
+        _state.value = _state.value.commit(transformClip(base.project, clipId, x - shown.x, y - shown.y, size / shown.scale, angle - shown.rotation))
+    }
+
     /** Ends a drag. A drag that ends where it began leaves no undo entry. */
     fun endGesture() {
         val start = gestureStart ?: return
@@ -300,5 +347,11 @@ class EditorViewModel(
 
     private companion object {
         const val AUTOSAVE_DELAY_MS = 800L
+
+        /** A pinch within 3% of the original size snaps to it. */
+        const val SCALE_SNAP = 0.03
+
+        /** A turn within 3° of a right angle snaps to it. */
+        const val ROTATION_SNAP_DEGREES = 3.0
     }
 }

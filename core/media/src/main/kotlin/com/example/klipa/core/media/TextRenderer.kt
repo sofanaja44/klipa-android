@@ -18,12 +18,10 @@ import kotlin.math.max
 private const val MAX_SIDE = 8192
 private const val MAX_PIXELS = 32_000_000
 
-/**
- * Renders [style] at [scale] bitmap pixels per project pixel: the text with its stroke on
- * the background, padded by a quarter of the font size plus the stroke. Returns null when
- * there is nothing visible to draw or the bitmap would be too large.
- */
-fun renderText(style: TextStyle, scale: Float = 1f): Bitmap? {
+/** How a text layer is laid out: its paint, lines and pixel size. */
+private class TextLayout(val paint: Paint, val lines: List<String>, val padding: Float, val lineHeight: Float, val width: Int, val height: Int)
+
+private fun layOut(style: TextStyle, scale: Float): TextLayout? {
     val fontSize = (style.fontSize * scale).toFloat()
     if (fontSize < 1f || style.text.isBlank()) return null
     val strokeWidth = (style.strokeWidth * scale).toFloat()
@@ -42,22 +40,39 @@ fun renderText(style: TextStyle, scale: Float = 1f): Bitmap? {
     val width = max(2, ceil(max(lines.maxOf { paint.measureText(it) }, 1f) + padding * 2).toInt())
     val height = max(2, ceil(lineHeight * lines.size + padding * 2).toInt())
     if (width > MAX_SIDE || height > MAX_SIDE || width.toLong() * height > MAX_PIXELS) return null
+    return TextLayout(paint, lines, padding, lineHeight, width, height)
+}
 
-    val bitmap = createBitmap(width, height)
+/**
+ * The size, in pixels at [scale] per project pixel, of [style]'s layer as [renderText]
+ * draws it; null when it draws nothing.
+ */
+fun textLayerSize(style: TextStyle, scale: Float = 1f): Pair<Int, Int>? = layOut(style, scale)?.let { it.width to it.height }
+
+/**
+ * Renders [style] at [scale] bitmap pixels per project pixel: the text with its stroke on
+ * the background, padded by a quarter of the font size plus the stroke. Returns null when
+ * there is nothing visible to draw or the bitmap would be too large.
+ */
+fun renderText(style: TextStyle, scale: Float = 1f): Bitmap? {
+    val layout = layOut(style, scale) ?: return null
+    val paint = layout.paint
+    val strokeWidth = (style.strokeWidth * scale).toFloat()
+    val bitmap = createBitmap(layout.width, layout.height)
     val canvas = Canvas(bitmap)
     parseArgb(style.background)?.let { if (it ushr 24 != 0) canvas.drawColor(it) }
     val x = when (style.align) {
-        TextAlign.Left -> padding
-        TextAlign.Center -> width / 2f
-        TextAlign.Right -> width - padding
+        TextAlign.Left -> layout.padding
+        TextAlign.Center -> layout.width / 2f
+        TextAlign.Right -> layout.width - layout.padding
     }
     // Lines are centered vertically in their 1.3 em slot, like canvas textBaseline "middle".
     val metrics = paint.fontMetrics
     val middleToBaseline = -(metrics.ascent + metrics.descent) / 2
     val stroke = parseArgb(style.stroke)?.takeIf { strokeWidth > 0 && it ushr 24 != 0 }
     val fill = parseArgb(style.color) ?: 0xFFFFFFFF.toInt()
-    lines.forEachIndexed { index, line ->
-        val y = padding + lineHeight * (index + 0.5f) + middleToBaseline
+    layout.lines.forEachIndexed { index, line ->
+        val y = layout.padding + layout.lineHeight * (index + 0.5f) + middleToBaseline
         if (stroke != null) {
             paint.style = Paint.Style.STROKE
             paint.strokeWidth = strokeWidth * 2

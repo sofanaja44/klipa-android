@@ -100,6 +100,42 @@ fun EditorState.placeAsset(assetId: String, trackId: String?, range: SourceRange
     return commit(result.project).copy(selectedIds = listOf(result.clipId))
 }
 
+/** The size overlays start at: a picture-in-picture half the frame. */
+const val OVERLAY_SCALE = 0.5
+
+/**
+ * Places media as overlays at the playhead, one after another, each [SourceRange] from
+ * its start: on the lowest video track above the main (bottom) one that is free for their
+ * whole span, or on a new video track added above the others. Overlays start centered at
+ * [OVERLAY_SCALE] and the last one is selected, ready to arrange on the monitor. One undo
+ * entry.
+ *
+ * @throws EditRejectedException if a range is invalid.
+ */
+fun EditorState.placeOverlays(media: List<Pair<String, SourceRange>>): EditorState {
+    if (media.isEmpty()) return this
+    val from = playhead
+    val to = from + media.sumOf { it.second.duration }
+    var p = project
+    val videoTracks = p.tracks.filter { it.kind == TrackKind.Video }
+    val free = videoTracks.dropLast(1).lastOrNull { track ->
+        !track.locked && p.clips.none { it.trackId == track.id && it.start < to - 1e-8 && it.end > from + 1e-8 }
+    }
+    val track = free ?: createTrack(TrackKind.Video, "Video ${videoTracks.size + 1}").also { added ->
+        val top = p.tracks.indexOfFirst { it.kind == TrackKind.Video }.coerceAtLeast(0)
+        p = p.copy(tracks = p.tracks.toMutableList().apply { add(top, added) })
+    }
+    var time = from
+    var last = ""
+    for ((assetId, range) in media) {
+        val placed = placeAsset(p, assetId, track.id, time, range, PlacementMode.Overlay)
+        p = transformClip(placed.project, placed.clipId, scale = OVERLAY_SCALE)
+        last = placed.clipId
+        time = p.clips.first { it.id == last }.end
+    }
+    return commit(p).copy(selectedIds = listOf(last))
+}
+
 /**
  * Moves a video clip's sound to a linked audio clip and selects the pair.
  *

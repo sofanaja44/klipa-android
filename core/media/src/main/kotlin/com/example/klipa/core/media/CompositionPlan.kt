@@ -6,6 +6,7 @@ import com.example.klipa.core.model.MediaAsset
 import com.example.klipa.core.model.MediaKind
 import com.example.klipa.core.model.Project
 import com.example.klipa.core.model.TrackKind
+import com.example.klipa.core.model.Transform
 import com.example.klipa.core.model.end
 import kotlin.math.roundToLong
 
@@ -151,10 +152,10 @@ private fun splitOverlaps(clips: List<Pair<Clip, MediaAsset>>): List<List<Pair<C
 /**
  * The parts of a project that change what the player plays. Names, timestamps, derived
  * metadata such as waveforms, and text clips (drawn over the player, not by it) are left
- * out, so typing a title or finishing a waveform does not reload playback. Look values
- * and volume are read live (see [LiveProject]): only whether a clip has a look, whether it
- * cuts out, its blur bucket and whether its volume is at unity count, so dragging a color
- * or volume slider does not reload.
+ * out, so typing a title or finishing a waveform does not reload playback. Placement,
+ * look values and volume are read live (see [LiveProject]): only opacity, motion keyframe
+ * times, whether a clip has a look, whether it cuts out, its blur bucket and whether its
+ * volume is at unity count, so moving a clip or dragging a slider does not reload.
  */
 fun playbackSignature(project: Project): Project = project.copy(
     name = "",
@@ -165,6 +166,9 @@ fun playbackSignature(project: Project): Project = project.copy(
         val look = Look.of(clip)
         clip.copy(
             name = "",
+            // Opacity decides whether a clip fades; the rest of the placement is live.
+            transform = Transform(opacity = clip.transform.opacity),
+            keyframes = clip.keyframes.map { if (it.property in MotionProperties) it.copy(value = 0.0) else it },
             // A gain stage exists only away from unity volume.
             volume = if (clip.volume == 1.0) 1.0 else 0.0,
             adjustments = Adjustments(
