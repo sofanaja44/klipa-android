@@ -75,8 +75,8 @@ fun monitorLayers(project: Project, time: Double): List<MonitorLayer> =
  *
  * With a live [player], media plays through its surface and text is drawn on top. Without
  * one (or until its first frame arrives) media layers are decoded still by still from
- * [frames]; those still frames show transform, opacity, fades and color adjustments, but
- * not crop, chroma key, masks or blur. Text layers always draw above media, rendered by the
+ * [frames]; those still frames show crop, transform, opacity, fades and color adjustments,
+ * but not chroma key, masks or blur. Text layers always draw above media, rendered by the
  * same code as export.
  *
  * With [actions], clips can be selected and arranged by touch; [selectedId] is outlined.
@@ -153,10 +153,24 @@ private fun MediaLayer(layer: MonitorLayer, asset: MediaAsset, project: Project,
     val colorFilter = remember(clip.adjustments) { Look.of(clip).colorMatrix()?.let { ColorFilter.colorMatrix(ColorMatrix(it)) } }
     Canvas(Modifier.fillMaxSize()) {
         withClipTransform(clip, project) { scale ->
-            val contain = minOf(project.width.toFloat() / image.width, project.height.toFloat() / image.height) * scale
-            val w = (image.width * contain).roundToInt()
-            val h = (image.height * contain).roundToInt()
-            drawImage(image, dstOffset = IntOffset(-w / 2, -h / 2), dstSize = IntSize(w, h), alpha = layer.alpha, colorFilter = colorFilter)
+            // The crop, in the decoded frame's pixels; it is what gets fitted, as in export.
+            val crop = clip.crop
+            val srcX = crop?.let { (it.x * image.width).roundToInt().coerceIn(0, image.width - 1) } ?: 0
+            val srcY = crop?.let { (it.y * image.height).roundToInt().coerceIn(0, image.height - 1) } ?: 0
+            val srcW = crop?.let { (it.width * image.width).roundToInt().coerceIn(1, image.width - srcX) } ?: image.width
+            val srcH = crop?.let { (it.height * image.height).roundToInt().coerceIn(1, image.height - srcY) } ?: image.height
+            val contain = minOf(project.width.toFloat() / srcW, project.height.toFloat() / srcH) * scale
+            val w = (srcW * contain).roundToInt()
+            val h = (srcH * contain).roundToInt()
+            drawImage(
+                image,
+                srcOffset = IntOffset(srcX, srcY),
+                srcSize = IntSize(srcW, srcH),
+                dstOffset = IntOffset(-w / 2, -h / 2),
+                dstSize = IntSize(w, h),
+                alpha = layer.alpha,
+                colorFilter = colorFilter,
+            )
         }
     }
 }

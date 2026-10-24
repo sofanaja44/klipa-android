@@ -24,6 +24,7 @@ import androidx.compose.ui.test.performScrollTo
 import com.example.klipa.core.model.Adjustments
 import com.example.klipa.core.model.ChromaKey
 import com.example.klipa.core.model.Clip
+import com.example.klipa.core.model.CropRect
 import com.example.klipa.core.model.MaskShape
 import com.example.klipa.core.model.ShapeMask
 import androidx.media3.transformer.Composition
@@ -78,6 +79,9 @@ class EditorScreenshotTest {
 
     @Test
     fun maskSheet() = captureClipSheet("Mask", "mask_sheet") { it.copy(mask = ShapeMask(MaskShape.Ellipse, 0.7, 0.85, 0.12, invert = false)) }
+
+    @Test
+    fun cropSheet() = captureClipSheet("Crop", "crop_sheet") { it.copy(crop = CropRect(0.32, 0.0, 0.5625 * 0.75, 0.75)) }
 
     /** Selects the first shot, styled by [style], and opens its [tool] sheet. */
     private fun captureClipSheet(tool: String, name: String, style: (Clip) -> Clip) {

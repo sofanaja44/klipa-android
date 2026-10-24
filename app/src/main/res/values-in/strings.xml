@@ -37,6 +37,10 @@
     <string name="tool_mask">Masker</string>
     <string name="adjust_title">Atur</string>
     <string name="adjust_reset">Reset</string>
+    <string name="tool_crop">Pangkas</string>
+    <string name="crop_title">Pangkas</string>
+    <string name="crop_free">Bebas</string>
+    <string name="crop_hint">Geser kotak untuk memindahkannya, tarik sudutnya untuk mengubah ukuran.</string>
     <string name="adjust_filters">Filter</string>
     <string name="adjust_brightness">Kecerahan</string>
     <string name="adjust_contrast">Kontras</string>

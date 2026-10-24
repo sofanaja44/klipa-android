@@ -38,6 +38,10 @@
     <string name="tool_mask">Mask</string>
     <string name="adjust_title">Adjust</string>
     <string name="adjust_reset">Reset</string>
+    <string name="tool_crop">Crop</string>
+    <string name="crop_title">Crop</string>
+    <string name="crop_free">Free</string>
+    <string name="crop_hint">Drag the frame to move it, its corners to resize it.</string>
     <string name="adjust_filters">Filters</string>
     <string name="adjust_brightness">Brightness</string>
     <string name="adjust_contrast">Contrast</string>

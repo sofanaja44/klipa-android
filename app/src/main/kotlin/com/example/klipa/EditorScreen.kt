@@ -36,6 +36,7 @@ import androidx.compose.material.icons.rounded.Colorize
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.PictureInPicture
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.Vignette
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -326,6 +327,7 @@ fun EditorScreen(
             onEditText = { openSheet = ClipSheet.Text },
             onVolume = { openSheet = ClipSheet.Volume },
             onAdjust = { openSheet = ClipSheet.Adjust },
+            onCrop = { openSheet = ClipSheet.Crop },
             onChromaKey = { openSheet = ClipSheet.ChromaKey },
             onMask = { openSheet = ClipSheet.Mask },
             onDetachAudio = viewModel::detachAudio,
@@ -387,6 +389,14 @@ fun EditorScreen(
             ClipSheet.Adjust -> AdjustSheet(selected, onChange = viewModel::updateSelectedClip, onDismiss = { openSheet = null })
             ClipSheet.ChromaKey -> ChromaKeySheet(selected, onChange = viewModel::updateSelectedClip, onDismiss = { openSheet = null })
             ClipSheet.Mask -> MaskSheet(selected, onChange = viewModel::updateSelectedClip, onDismiss = { openSheet = null })
+            ClipSheet.Crop -> state.project.assets.find { it.id == selected.assetId }?.let { asset ->
+                // The frame under the playhead when the sheet opens, if it is in the clip, else the clip's first.
+                val sourceTime = remember(selected.id) {
+                    val inClip = state.playhead >= selected.start && state.playhead < selected.start + selected.duration
+                    selected.sourceIn + if (inClip) (state.playhead - selected.start) * selected.speed else 0.0
+                }
+                CropSheet(selected, asset, sourceTime, frames, onChange = viewModel::updateSelectedClip, onDismiss = { openSheet = null })
+            } ?: run { openSheet = null }
         }
     } else if (sheet != null) {
         openSheet = null
@@ -565,6 +575,7 @@ private fun EditorToolbar(
     onEditText: () -> Unit,
     onVolume: () -> Unit,
     onAdjust: () -> Unit,
+    onCrop: () -> Unit,
     onChromaKey: () -> Unit,
     onMask: () -> Unit,
     onDetachAudio: () -> Unit,
@@ -594,7 +605,10 @@ private fun EditorToolbar(
                 ToolButton(Icons.Rounded.Check, R.string.tool_done, accent = true, onClick = onDone)
                 ToolButton(Icons.Rounded.ContentCut, R.string.tool_split, enabled = !locked && underPlayhead, onClick = onSplit)
                 val visual = primary.text == null && (asset?.kind == MediaKind.Video || asset?.kind == MediaKind.Image)
-                if (visual) ToolButton(Icons.Rounded.Tune, R.string.tool_adjust, enabled = !locked, onClick = onAdjust)
+                if (visual) {
+                    ToolButton(Icons.Rounded.Tune, R.string.tool_adjust, enabled = !locked, onClick = onAdjust)
+                    ToolButton(Icons.Rounded.Crop, R.string.tool_crop, enabled = !locked, onClick = onCrop)
+                }
                 if (primary.text != null) {
                     ToolButton(Icons.Rounded.Edit, R.string.tool_edit_text, enabled = !locked, onClick = onEditText)
                 } else {
@@ -670,7 +684,7 @@ private fun SpeedSheet(current: Double, onSpeed: (Double) -> Unit, onDismiss: ()
     }
 }
 
-private enum class ClipSheet { Text, Volume, Adjust, ChromaKey, Mask }
+private enum class ClipSheet { Text, Volume, Adjust, Crop, ChromaKey, Mask }
 
 /** Swatches offered for text color: white and black, the accent, and a few clear hues. */
 private val TextColors = listOf("#ffffff", "#000000", "#ffc23d", "#ff5a5f", "#4cc9f0", "#7bd88f")

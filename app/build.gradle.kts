@@ -12,8 +12,8 @@ android {
         applicationId = "com.example.klipa"
         minSdk = 26
         targetSdk = 37
-        versionCode = 11
-        versionName = "0.9.1"
+        versionCode = 12
+        versionName = "0.10.0"
     }
 
     // Only ship the languages the app is translated into, so library UI never shows

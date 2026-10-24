@@ -4,12 +4,12 @@ A native Android video editor. Kotlin, Jetpack Compose, and AndroidX Media3
 (ExoPlayer for preview, Transformer for export). The editing engine is ported
 from [ReaCut](https://github.com/Xiangyu-CAS/rea-capcut) (MIT).
 
-**Status:** milestones 1–6 plus monitor editing, projects and background
-export (version 0.9.0).
+**Status:** milestones 1–6 plus monitor editing, projects, background
+export and cropping (version 0.10.0).
 Keep any number of projects, each in its own format (9:16, 16:9, 1:1, 4:5).
 Import media, cut on a multi-track timeline with thumbnails and waveforms,
 arrange titles and picture-in-picture overlays right on the monitor, grade clips
-with filters, chroma key and masks, play the edit back in real time with sound,
+with filters, chroma key and masks, crop them, play the edit back in real time with sound,
 and export it to an MP4 in the phone's gallery. Projects autosave.
 
 ## What works
@@ -46,6 +46,11 @@ and export it to an MP4 in the phone's gallery. Projects autosave.
   functions, `tools/shader-check`), so the preview and the export match. Look
   and volume sliders apply to the playing (or paused) preview without
   reloading the player.
+- **Crop** video and photo clips: drag the frame to move it and its corners to
+  resize it over the clip's picture (the frame under the playhead), or start
+  from a centered 9:16, 16:9, 1:1 or 4:5 crop, which then keeps its shape. The
+  cropped picture fills the project frame as the whole one did; Reset removes
+  the crop. One undo step per sheet.
 - **Tracks**: mute, hide, lock, reorder, delete from the track header menu.
 - **Real-time preview with sound** through Media3's `CompositionPlayer`, set
   up as in Media3's composition demo. With one video track it uses the
@@ -72,9 +77,9 @@ and export it to an MP4 in the phone's gallery. Projects autosave.
   file per project.
 - Portrait and landscape layouts; English and Indonesian.
 
-Not yet: a crop tool (crops in imported ReaCut projects are rendered); editing
-keyframes; still frames (shown before playback starts, or if the preview falls
-back) show color adjustments but not chroma key, masks or blur; text is drawn
+Not yet: editing keyframes; still frames (shown before playback starts, or if
+the preview falls back) show crop and color adjustments but not chroma key,
+masks or blur; text is drawn
 above all media regardless of track order; the project background color is not
 rendered behind media (gaps are black); a project needs a video or photo to
 export.
