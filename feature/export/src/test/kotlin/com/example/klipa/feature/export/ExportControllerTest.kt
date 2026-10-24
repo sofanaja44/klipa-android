@@ -29,7 +29,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 
 @RunWith(RobolectricTestRunner::class)
-class ExportViewModelTest {
+class ExportControllerTest {
     private class FakeEngine : ExportEngine {
         lateinit var listener: ExportEngine.Listener
         lateinit var output: File
@@ -67,12 +67,15 @@ class ExportViewModelTest {
     }
     private val engines = mutableListOf<FakeEngine>()
 
-    private fun exporter(library: VideoLibrary = FakeLibrary(Uri.parse("content://media/external/video/media/7"))) = ExportViewModel(
+    private var started = 0
+
+    private fun exporter(library: VideoLibrary = FakeLibrary(Uri.parse("content://media/external/video/media/7"))) = ExportController(
         RuntimeEnvironment.getApplication(),
         engineFactory = { FakeEngine().also { engines += it } },
         library = library,
         io = Dispatchers.Unconfined,
         clock = { Date(0) },
+        onStarted = { started++ },
     )
 
     private fun runMainLooper(millis: Long = 0) = shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(millis))
@@ -147,6 +150,8 @@ class ExportViewModelTest {
         exporter.start(project, ExportSettings(1080))
         exporter.start(project, ExportSettings(720))
         assertEquals(1, engines.size)
+        // The foreground service is asked for once per export.
+        assertEquals(1, started)
     }
 
     @Test

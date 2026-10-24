@@ -5,7 +5,18 @@
          app declares it, since a library declaring it makes the manifest merger add
          READ_EXTERNAL_STORAGE for every Android version. -->
 
+    <!-- Exports run in a foreground service so switching apps does not stop them. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application>
+        <service
+            android:name=".ExportService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProcessing|dataSync" />
+
         <!-- Shares an export kept in app storage when it could not go into the gallery. -->
         <provider
             android:name="androidx.core.content.FileProvider"

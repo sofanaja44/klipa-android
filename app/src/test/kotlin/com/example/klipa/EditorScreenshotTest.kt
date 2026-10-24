@@ -30,7 +30,7 @@ import androidx.media3.transformer.Composition
 import com.example.klipa.feature.export.ExportEngine
 import com.example.klipa.feature.export.ExportSettings
 import java.io.File
-import com.example.klipa.feature.export.ExportViewModel
+import com.example.klipa.feature.export.ExportController
 import org.junit.Rule
 import org.junit.Test
 import org.robolectric.RuntimeEnvironment
@@ -113,7 +113,7 @@ class EditorScreenshotTest {
 
             override fun cancel() = Unit
         }
-        val exporter = ExportViewModel(RuntimeEnvironment.getApplication(), engineFactory = { engine })
+        val exporter = ExportController(RuntimeEnvironment.getApplication(), engineFactory = { engine }, onStarted = {})
         val state = EditorState().copy(project = sampleProject(), playhead = 4.2, zoom = 38.0)
         show(state, exporter)
         exporter.start(state.project, ExportSettings(1080))
@@ -123,7 +123,7 @@ class EditorScreenshotTest {
         captureSheet("export_progress")
     }
 
-    private fun show(state: EditorState, exporter: ExportViewModel = ExportViewModel(RuntimeEnvironment.getApplication())) {
+    private fun show(state: EditorState, exporter: ExportController = ExportController(RuntimeEnvironment.getApplication(), onStarted = {})) {
         val viewModel = EditorViewModel(initial = state)
         compose.setContent {
             KlipaTheme {

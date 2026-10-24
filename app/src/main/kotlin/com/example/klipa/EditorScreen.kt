@@ -19,7 +19,7 @@ import com.example.klipa.core.media.playbackSignature
 import com.example.klipa.feature.preview.PreviewPlayer
 import com.example.klipa.feature.export.ExportSheet
 import com.example.klipa.feature.export.ExportState
-import com.example.klipa.feature.export.ExportViewModel
+import com.example.klipa.feature.export.ExportController
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.Button
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -153,7 +153,7 @@ private val SpeedPresets = listOf(0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0)
 @Composable
 fun EditorScreen(
     viewModel: EditorViewModel,
-    exporter: ExportViewModel,
+    exporter: ExportController,
     frames: FrameSource,
     importing: Boolean,
     onPickMedia: () -> Unit,

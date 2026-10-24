@@ -31,7 +31,6 @@ import com.example.klipa.core.media.MediaFrameSource
 import com.example.klipa.core.media.MediaProbe
 import com.example.klipa.core.model.Project
 import com.example.klipa.core.projects.ProjectSummary
-import com.example.klipa.feature.export.ExportViewModel
 import com.example.klipa.feature.timeline.EditorViewModel
 import com.example.klipa.feature.timeline.ProjectRepository
 import kotlinx.coroutines.Dispatchers
@@ -55,11 +54,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private val exporter: ExportViewModel by viewModels {
-        viewModelFactory {
-            initializer { ExportViewModel(application) }
-        }
-    }
+    private val exporter get() = (application as KlipaApplication).exporter
 
     private val frames by lazy { MediaFrameSource(this) }
 

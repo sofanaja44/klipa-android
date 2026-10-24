@@ -76,7 +76,7 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ExportSheet(project: Project, exporter: ExportViewModel, onDismiss: () -> Unit) {
+fun ExportSheet(project: Project, exporter: ExportController, onDismiss: () -> Unit) {
     val colors = Klipa.colors
     val state by exporter.state.collectAsState()
     val busy = state is ExportState.Running || state is ExportState.Saving
@@ -168,9 +168,14 @@ private fun ColumnScope.SettingsContent(project: Project, onExport: (Project, Ex
     Spacer(Modifier.height(KlipaSpacing.xl))
     Button(
         onClick = {
-            val needsPermission = Build.VERSION.SDK_INT < 29 &&
-                ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
-            if (needsPermission) permission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) else export()
+            // Android 9 and older need storage access for the gallery; 13 and newer ask
+            // before showing the progress notification. Either way the export runs.
+            val needed = when {
+                Build.VERSION.SDK_INT < 29 -> Manifest.permission.WRITE_EXTERNAL_STORAGE
+                Build.VERSION.SDK_INT >= 33 -> Manifest.permission.POST_NOTIFICATIONS
+                else -> null
+            }?.takeIf { ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED }
+            if (needed != null) permission.launch(needed) else export()
         },
         enabled = exportable,
         modifier = Modifier.fillMaxWidth().height(48.dp),
@@ -280,7 +285,7 @@ private fun ColumnScope.FailedContent(failed: ExportState.Failed, onRetry: () ->
     }
 }
 
-private val ExportFailure.message: Int
+internal val ExportFailure.message: Int
     get() = when (this) {
         ExportFailure.NothingToExport -> R.string.export_failure_nothing
         ExportFailure.MissingMedia -> R.string.export_failure_missing

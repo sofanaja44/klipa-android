@@ -4,7 +4,8 @@ A native Android video editor. Kotlin, Jetpack Compose, and AndroidX Media3
 (ExoPlayer for preview, Transformer for export). The editing engine is ported
 from [ReaCut](https://github.com/Xiangyu-CAS/rea-capcut) (MIT).
 
-**Status:** milestones 1–6 plus monitor editing and projects (version 0.8.0).
+**Status:** milestones 1–6 plus monitor editing, projects and background
+export (version 0.9.0).
 Keep any number of projects, each in its own format (9:16, 16:9, 1:1, 4:5).
 Import media, cut on a multi-track timeline with thumbnails and waveforms,
 arrange titles and picture-in-picture overlays right on the monitor, grade clips
@@ -57,7 +58,9 @@ and export it to an MP4 in the phone's gallery. Projects autosave.
   the same composition the preview plays, with every video layer composited and
   titles drawn on top. Pick 480p, 720p or 1080p (up to the project's own size;
   the sheet estimates the file size), follow progress, cancel. The video goes to
-  Movies/Klipa and can be shared or played from the sheet. HDR footage is
+  Movies/Klipa and can be shared or played from the sheet. Exports run in a
+  foreground service: switch apps freely, follow the progress in a
+  notification, and tap the "Video saved" notification to play the result. HDR footage is
   tone-mapped to SDR; media shot at a higher frame rate is thinned to the
   project's.
 - **Titles** are rendered by one piece of code for the monitor and the export
@@ -74,7 +77,7 @@ keyframes; still frames (shown before playback starts, or if the preview falls
 back) show color adjustments but not chroma key, masks or blur; text is drawn
 above all media regardless of track order; the project background color is not
 rendered behind media (gaps are black); a project needs a video or photo to
-export; exports run while Klipa is open (no background service yet).
+export.
 
 ## Install on a phone
 

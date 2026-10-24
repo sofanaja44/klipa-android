@@ -3,12 +3,10 @@
 
 package com.example.klipa.feature.export
 
-import android.app.Application
+import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.annotation.OptIn
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.transformer.ExportException
 import com.example.klipa.core.model.Project
@@ -17,8 +15,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -83,23 +83,32 @@ fun classify(error: ExportException): ExportFailure = when (error.errorCode) {
     else -> ExportFailure.Unknown
 }
 
+/** Gives the export service the app's one [ExportController]; the Application implements it. */
+interface ExportHost {
+    val exporter: ExportController
+}
+
 /**
- * Runs exports. It lives in a ViewModel so an export keeps going through rotation; it
- * renders into app cache, then copies the file into Movies/Klipa. One export at a time.
+ * Runs exports, one at a time: it renders into app cache, then copies the file into
+ * Movies/Klipa. It belongs to the application, not a screen, so an export outlives the
+ * activity; [onStarted] is told when one begins, to keep the process in the foreground
+ * (see [ExportService]). Used from the main thread.
  */
-class ExportViewModel(
-    application: Application,
-    private val engineFactory: () -> ExportEngine = { TransformerEngine(application) },
-    private val library: VideoLibrary = MediaStoreLibrary(application),
+class ExportController(
+    context: Context,
+    private val engineFactory: () -> ExportEngine = { TransformerEngine(context) },
+    private val library: VideoLibrary = MediaStoreLibrary(context),
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val clock: () -> Date = ::Date,
-) : AndroidViewModel(application) {
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+    private val onStarted: () -> Unit = { ExportService.start(context) },
+) {
     private val _state = MutableStateFlow<ExportState>(ExportState.Idle)
     val state: StateFlow<ExportState> = _state.asStateFlow()
 
     private var engine: ExportEngine? = null
     private var progressJob: Job? = null
-    private val folder = File(application.cacheDir, "exports")
+    private val folder = File(context.cacheDir, "exports")
 
     val running: Boolean get() = _state.value is ExportState.Running || _state.value is ExportState.Saving
 
@@ -128,12 +137,12 @@ class ExportViewModel(
         try {
             engine.start(built.composition, output, videoBitrate(project, settings), object : ExportEngine.Listener {
                 override fun onCompleted(sizeBytes: Long, durationMs: Long) {
-                    if (this@ExportViewModel.engine !== engine) return
+                    if (this@ExportController.engine !== engine) return
                     finish(output, name, sizeBytes, durationMs)
                 }
 
                 override fun onError(error: ExportException) {
-                    if (this@ExportViewModel.engine !== engine) return
+                    if (this@ExportController.engine !== engine) return
                     Log.w(TAG, "Export failed", error)
                     output.delete()
                     fail(classify(error), "${error.errorCodeName}: ${error.message} (${error.cause})")
@@ -144,7 +153,8 @@ class ExportViewModel(
             fail(ExportFailure.Unknown, e.toString())
             return
         }
-        progressJob = viewModelScope.launch {
+        onStarted()
+        progressJob = scope.launch {
             while (isActive) {
                 if (_state.value is ExportState.Running) _state.value = ExportState.Running(engine.progress())
                 delay(PROGRESS_INTERVAL_MS)
@@ -173,7 +183,7 @@ class ExportViewModel(
         engine = null
         _state.value = ExportState.Saving
         val size = if (sizeBytes > 0) sizeBytes else output.length()
-        viewModelScope.launch {
+        scope.launch {
             // Once copied into the gallery, the cache copy is not needed.
             val saved = withContext(io) { library.save(output, name)?.also { output.delete() } }
             _state.value = ExportState.Done(ExportedVideo(saved ?: library.shareable(output), name, size, durationMs, inGallery = saved != null))
@@ -184,10 +194,6 @@ class ExportViewModel(
         progressJob?.cancel()
         engine = null
         _state.value = ExportState.Failed(failure, detail)
-    }
-
-    override fun onCleared() {
-        cancel()
     }
 
     private companion object {

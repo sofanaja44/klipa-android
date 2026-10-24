@@ -11,7 +11,7 @@
     </plurals>
     <string name="export_running">Mengekspor</string>
     <string name="export_saving">Menyimpan ke Movies/Klipa…</string>
-    <string name="export_keep_open">Biarkan Klipa tetap terbuka sampai ekspor selesai.</string>
+    <string name="export_keep_open">Boleh pindah aplikasi: ekspor tetap berjalan dan memberi tahu saat selesai.</string>
     <string name="export_progress_description">Progres ekspor</string>
     <string name="export_cancel">Batal</string>
     <string name="export_done_gallery">Tersimpan di Movies/Klipa</string>
@@ -29,4 +29,9 @@
     <string name="export_failure_unknown">Terjadi kesalahan saat mengekspor.</string>
     <string name="export_retry">Coba lagi</string>
     <string name="export_copy_details">Salin detail</string>
+    <string name="export_notification_channel">Ekspor</string>
+    <string name="export_notification_running">Mengekspor video</string>
+    <string name="export_notification_done">Video tersimpan</string>
+    <string name="export_notification_done_gallery">Movies/Klipa · %1$s · ketuk untuk memutar</string>
+    <string name="export_notification_done_app">Tersimpan di Klipa · %1$s · ketuk untuk memutar</string>
 </resources>

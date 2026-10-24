@@ -15,7 +15,7 @@
     </plurals>
     <string name="export_running">Exporting</string>
     <string name="export_saving">Saving to Movies/Klipa…</string>
-    <string name="export_keep_open">Keep Klipa open until the export finishes.</string>
+    <string name="export_keep_open">You can switch apps: the export keeps going and lets you know when it is done.</string>
     <string name="export_progress_description">Export progress</string>
     <string name="export_cancel">Cancel</string>
     <string name="export_done_gallery">Saved to Movies/Klipa</string>
@@ -33,4 +33,9 @@
     <string name="export_failure_unknown">Something went wrong while exporting.</string>
     <string name="export_retry">Try again</string>
     <string name="export_copy_details">Copy details</string>
+    <string name="export_notification_channel">Exports</string>
+    <string name="export_notification_running">Exporting video</string>
+    <string name="export_notification_done">Video saved</string>
+    <string name="export_notification_done_gallery">Movies/Klipa · %1$s · tap to play</string>
+    <string name="export_notification_done_app">Saved in Klipa · %1$s · tap to play</string>
 </resources>
