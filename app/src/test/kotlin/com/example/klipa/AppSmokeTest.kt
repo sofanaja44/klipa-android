@@ -4,6 +4,9 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
@@ -31,8 +34,20 @@ class AppSmokeTest {
     @get:Rule
     val compose = createAndroidComposeRule<MainActivity>()
 
+    /** Starts a project from the home screen and waits for the editor. */
+    private fun newProject(format: String = "16:9") {
+        compose.onNodeWithText("New project").performClick()
+        compose.onNodeWithText(format).performClick()
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("Your timeline is empty").fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    // The project list loads off the main thread, so it is waited for.
+    private fun waitForText(text: String, present: Boolean = true) =
+        compose.waitUntil(5_000) { compose.onAllNodesWithText(text, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() == present }
+
     @Test
     fun `add text, scrub, zoom, delete and undo`() {
+        newProject()
         compose.onNodeWithText("Your timeline is empty").assertExists()
         compose.onNodeWithText("Text").performClick()
         // A new text clip is selected, so the clip tools replace the add tools.
@@ -62,6 +77,7 @@ class AppSmokeTest {
     @Test
     fun `arrange a title on the monitor`() {
         val editor = ViewModelProvider(compose.activity)[EditorViewModel::class.java]
+        newProject()
         compose.onNodeWithText("Text").performClick()
         val monitor = compose.onNodeWithContentDescription(compose.activity.getString(R.string.monitor_description))
         fun title() = editor.state.value.project.clips.single { it.text != null }
@@ -82,5 +98,41 @@ class AppSmokeTest {
         compose.onNodeWithText("Done").assertExists()
         monitor.performTouchInput { click(center) }
         compose.onNodeWithText("Enter text").assertExists()
+    }
+
+    @Test
+    fun `projects are created in a format, kept, renamed, copied and deleted`() {
+        waitForText("No projects yet. Start one above.")
+        newProject("9:16")
+        compose.onNodeWithText("9:16 · 30 fps").assertExists()
+        compose.onNodeWithText("Text").performClick()
+
+        // Back on the home screen, the project is listed with its shape.
+        compose.onNodeWithContentDescription("Projects").performClick()
+        waitForText("Project 1")
+        compose.onNodeWithContentDescription("9:16").assertExists()
+
+        compose.onNodeWithContentDescription("Options for Project 1").performClick()
+        compose.onNodeWithText("Rename").performClick()
+        compose.onNode(hasSetTextAction()).performTextReplacement("Beach day")
+        compose.onAllNodesWithText("Rename").onLast().performClick()
+        waitForText("Beach day")
+
+        compose.onNodeWithContentDescription("Options for Beach day").performClick()
+        compose.onNodeWithText("Duplicate").performClick()
+        waitForText("Beach day (copy)")
+        compose.onNodeWithText("Projects · 2").assertExists()
+
+        compose.onNodeWithContentDescription("Options for Beach day").performClick()
+        compose.onNodeWithText("Delete").performClick()
+        compose.onNodeWithText("Delete project?").assertExists()
+        compose.onNodeWithText("Delete").performClick()
+        waitForText("Projects · 1")
+        compose.onNodeWithText("Beach day").assertDoesNotExist()
+
+        // The copy opens with the title the original had, in its format.
+        compose.onNodeWithText("Beach day (copy)").performClick()
+        waitForText("9:16 · 30 fps")
+        compose.onNodeWithText("Your timeline is empty").assertDoesNotExist()
     }
 }

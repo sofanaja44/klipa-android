@@ -9,6 +9,7 @@ import androidx.media3.common.util.ExperimentalApi
 import androidx.media3.common.util.UnstableApi
 import android.os.Looper
 import androidx.media3.common.C
+import androidx.media3.common.PlaybackException
 import com.example.klipa.core.media.LiveProject
 import com.example.klipa.core.media.ProjectComposition
 import com.example.klipa.core.model.Adjustments
@@ -131,7 +132,11 @@ class CompositionBuildTest {
             player.setComposition(built.composition)
             player.prepare()
             shadowOf(Looper.getMainLooper()).idle()
-            assertNull(player.playerError)
+            // The sample media do not exist on the JVM, so reading them may already have
+            // failed; any other error means Media3 rejected the composition.
+            player.playerError?.let { error ->
+                assertEquals(PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND, error.errorCode, "unexpected player error: $error (${error.cause})")
+            }
         } finally {
             player.release()
         }

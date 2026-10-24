@@ -29,7 +29,9 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import androidx.compose.foundation.border
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
+import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.rounded.Colorize
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.PictureInPicture
@@ -158,6 +160,7 @@ fun EditorScreen(
     onPickAudio: () -> Unit,
     realTimePreview: Boolean = true,
     onPickOverlay: () -> Unit = {},
+    onBack: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
     val colors = Klipa.colors
@@ -165,6 +168,9 @@ fun EditorScreen(
     val resources = LocalResources.current
     var speedSheet by remember { mutableStateOf(false) }
     var diagnosticsSheet by remember { mutableStateOf(false) }
+    var formatSheet by remember { mutableStateOf(false) }
+    // Back returns to the project list; open sheets and dialogs close first on their own.
+    BackHandler(onBack = onBack)
     var openSheet by remember { mutableStateOf<ClipSheet?>(null) }
     // Saveable, so an export in progress keeps its sheet through rotation.
     var exportSheet by rememberSaveable { mutableStateOf(false) }
@@ -342,7 +348,7 @@ fun EditorScreen(
                     // Landscape: the monitor keeps the left half, the timeline gets the full height on the right.
                     Row(Modifier.fillMaxSize()) {
                         Column(Modifier.weight(0.9f).fillMaxHeight()) {
-                            EditorTopBar(state, onUndo = viewModel::undo, onRedo = viewModel::redo, onExport = openExport, onDiagnostics = { diagnosticsSheet = true })
+                            EditorTopBar(state, onBack = onBack, onUndo = viewModel::undo, onRedo = viewModel::redo, onExport = openExport, onFormat = { formatSheet = true }, onDiagnostics = { diagnosticsSheet = true })
                             monitor(Modifier.weight(1f).fillMaxWidth())
                             TransportBar(state, onTogglePlay = viewModel::togglePlay)
                         }
@@ -355,7 +361,7 @@ fun EditorScreen(
                 } else {
                     val timelineHeight = (maxHeight * 0.4f).coerceIn(180.dp, 360.dp)
                     Column(Modifier.fillMaxSize()) {
-                        EditorTopBar(state, onUndo = viewModel::undo, onRedo = viewModel::redo, onExport = openExport, onDiagnostics = { diagnosticsSheet = true })
+                        EditorTopBar(state, onBack = onBack, onUndo = viewModel::undo, onRedo = viewModel::redo, onExport = openExport, onFormat = { formatSheet = true }, onDiagnostics = { diagnosticsSheet = true })
                         monitor(Modifier.weight(1f).fillMaxWidth())
                         TransportBar(state, onTogglePlay = viewModel::togglePlay)
                         timeline(Modifier.fillMaxWidth().height(timelineHeight))
@@ -390,6 +396,18 @@ fun EditorScreen(
     }
     if (exportSheet || exporting) {
         ExportSheet(state.project, exporter, onDismiss = { exportSheet = false })
+    }
+    if (formatSheet) {
+        FormatSheet(
+            title = stringResource(R.string.format_title),
+            hint = stringResource(R.string.format_hint),
+            current = ProjectFormat.of(state.project.width, state.project.height),
+            onPick = { format ->
+                formatSheet = false
+                viewModel.setFormat(format.width, format.height)
+            },
+            onDismiss = { formatSheet = false },
+        )
     }
     if (diagnosticsSheet) {
         DiagnosticsSheet(report = { diagnosticsReport(context, state, preview) }, revision = preview.revision, onDismiss = { diagnosticsSheet = false })
@@ -447,17 +465,28 @@ private fun DiagnosticsSheet(report: () -> String, revision: Int, onDismiss: () 
 }
 
 @Composable
-private fun EditorTopBar(state: EditorState, onUndo: () -> Unit, onRedo: () -> Unit, onExport: () -> Unit, onDiagnostics: () -> Unit) {
+private fun EditorTopBar(
+    state: EditorState,
+    onBack: () -> Unit,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
+    onExport: () -> Unit,
+    onFormat: () -> Unit,
+    onDiagnostics: () -> Unit,
+) {
     val colors = Klipa.colors
     var menu by remember { mutableStateOf(false) }
     Row(
-        Modifier.fillMaxWidth().height(52.dp).padding(start = KlipaSpacing.lg, end = KlipaSpacing.xs),
+        Modifier.fillMaxWidth().height(52.dp).padding(horizontal = KlipaSpacing.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        IconButton(onClick = onBack) {
+            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.action_projects))
+        }
         Column(Modifier.weight(1f)) {
             Text(state.project.name, style = MaterialTheme.typography.titleSmall, color = colors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                stringResource(R.string.project_format, state.project.width, state.project.height, state.project.fps),
+                stringResource(R.string.project_format_ratio, formatLabel(state.project.width, state.project.height), state.project.fps),
                 style = MaterialTheme.typography.labelSmall,
                 color = colors.textTertiary,
             )
@@ -481,6 +510,13 @@ private fun EditorTopBar(state: EditorState, onUndo: () -> Unit, onRedo: () -> U
                 Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.action_more))
             }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.format_title)) },
+                    onClick = {
+                        menu = false
+                        onFormat()
+                    },
+                )
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.diagnostics_title)) },
                     onClick = {

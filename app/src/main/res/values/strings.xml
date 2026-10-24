@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name" translatable="false">Klipa</string>
-    <string name="project_format">%1$d × %2$d · %3$d fps</string>
     <string name="action_undo">Undo</string>
     <string name="action_redo">Redo</string>
     <string name="action_export">Export</string>
@@ -71,4 +70,27 @@
     <string name="mask_feather">Feather</string>
     <string name="mask_invert">Invert</string>
     <string name="tool_overlay">Overlay</string>
+    <string name="project_format_ratio">%1$s · %2$d fps</string>
+    <string name="action_projects">Projects</string>
+    <string name="action_rename">Rename</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="format_title">Format</string>
+    <string name="format_hint">Clips keep their size and place; whatever falls outside the new frame is cut off.</string>
+    <string name="format_portrait_use">TikTok, Reels, Shorts</string>
+    <string name="format_landscape_use">YouTube, wide screens</string>
+    <string name="format_square_use">Square posts</string>
+    <string name="format_feed_use">Instagram feed</string>
+    <string name="new_project">New project</string>
+    <string name="new_project_subtitle">Pick a format, then add your clips</string>
+    <string name="new_project_title">New project</string>
+    <string name="new_project_hint">Choose the shape of the video. You can change it later.</string>
+    <string name="home_projects">Projects · %1$d</string>
+    <string name="home_empty">No projects yet. Start one above.</string>
+    <string name="project_default_name">Project %1$d</string>
+    <string name="project_copy_name">%1$s (copy)</string>
+    <string name="project_options">Options for %1$s</string>
+    <string name="rename_project_title">Rename project</string>
+    <string name="delete_project_title">Delete project?</string>
+    <string name="delete_project_message">“%1$s” will be deleted. The photos, videos and music it uses stay on your phone.</string>
 </resources>

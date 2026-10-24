@@ -180,28 +180,83 @@ class EditorViewModelTest {
         assertTrue(vm.state.value.playing)
     }
 
-    @Test
-    fun `restores the saved project and autosaves after edits settle`() = runTest(dispatcher) {
-        val saved = fixture()
-        val repository = object : ProjectRepository {
-            val writes = mutableListOf<Project>()
-            override suspend fun load() = saved
-            override suspend fun save(project: Project) {
-                writes += project
-            }
+    private class MemoryRepository(vararg projects: Project) : ProjectRepository {
+        val stored = projects.associateBy { it.id }.toMutableMap()
+        val writes = mutableListOf<Project>()
+
+        override suspend fun load(id: String) = stored[id]
+
+        override suspend fun save(project: Project) {
+            writes += project
+            stored[project.id] = project
         }
+    }
+
+    @Test
+    fun `opens a project and autosaves it after edits settle`() = runTest(dispatcher) {
+        val saved = fixture()
+        val repository = MemoryRepository(saved)
         val vm = EditorViewModel(repository = repository)
+        assertNull(vm.openProjectId.value)
+        vm.open(saved.id)
         assertFalse(vm.ready.value)
         runCurrent()
         assertTrue(vm.ready.value)
         assertEquals(saved, vm.state.value.project)
-        assertNull(repository.writes.firstOrNull())
+        advanceTimeBy(2000)
+        // Opening is not an edit: nothing is written.
+        assertEquals(0, repository.writes.size)
         vm.addText()
         vm.addText()
         advanceTimeBy(500)
         assertEquals(0, repository.writes.size)
         advanceTimeBy(1000)
         assertEquals(listOf(vm.state.value.project), repository.writes)
+    }
+
+    @Test
+    fun `switching projects saves the open one and starts a fresh history`() = runTest(dispatcher) {
+        val first = fixture()
+        val second = createProject("Second")
+        val repository = MemoryRepository(first, second)
+        val vm = EditorViewModel(repository = repository)
+        vm.open(first.id)
+        runCurrent()
+        vm.addText()
+        val edited = vm.state.value.project
+
+        // Closing saves at once, without waiting for the autosave.
+        vm.close()
+        runCurrent()
+        assertNull(vm.openProjectId.value)
+        assertFalse(vm.ready.value)
+        assertEquals(listOf(edited), repository.writes)
+
+        vm.open(second.id)
+        runCurrent()
+        assertEquals(second, vm.state.value.project)
+        assertFalse(vm.state.value.canUndo)
+        advanceTimeBy(2000)
+        // Nothing of the closed project leaks into the next one's file.
+        assertEquals(listOf(edited), repository.writes)
+    }
+
+    @Test
+    fun `a project that cannot be read is not opened`() = runTest(dispatcher) {
+        val vm = EditorViewModel(repository = MemoryRepository())
+        vm.open("missing")
+        runCurrent()
+        assertNull(vm.openProjectId.value)
+        assertFalse(vm.ready.value)
+    }
+
+    @Test
+    fun `the format can change, as one undo step`() {
+        val vm = viewModel()
+        vm.setFormat(1080, 1920)
+        assertEquals(1080 to 1920, vm.state.value.project.let { it.width to it.height })
+        vm.undo()
+        assertEquals(1920 to 1080, vm.state.value.project.let { it.width to it.height })
     }
 
     private fun com.example.klipa.core.model.Clip.end() = start + duration

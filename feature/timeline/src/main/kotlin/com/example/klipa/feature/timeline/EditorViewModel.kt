@@ -35,6 +35,7 @@ import com.example.klipa.core.edit.undo
 import com.example.klipa.core.edit.unlinkSelected
 import com.example.klipa.core.edit.updateAssetMetadata
 import com.example.klipa.core.edit.updateClip
+import com.example.klipa.core.edit.updateProject
 import com.example.klipa.core.edit.updateTrack
 import com.example.klipa.core.model.Clip
 import com.example.klipa.core.model.InvalidProjectException
@@ -53,7 +54,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
@@ -73,10 +73,10 @@ sealed interface EditorMessage {
     data object PreviewFallback : EditorMessage
 }
 
-/** Where the editor keeps its working project between launches. */
+/** Where the editor keeps projects. */
 interface ProjectRepository {
-    /** The last saved project, or null if there is none or it cannot be read. */
-    suspend fun load(): Project?
+    /** Project [id], or null if it is gone or cannot be read. */
+    suspend fun load(id: String): Project?
 
     suspend fun save(project: Project)
 }
@@ -90,6 +90,9 @@ const val STILL_DURATION_SECONDS = 5.0
  *
  * Drags (trim, move) are gestures: every update is computed from the state at the start
  * of the drag, so snapping never accumulates error, and the whole drag is one undo step.
+ *
+ * With a [repository], one project at a time is [open]ed from it, autosaved while edited,
+ * and saved again on [close]. Without one, [initial] is the open project.
  */
 @OptIn(FlowPreview::class)
 class EditorViewModel(
@@ -99,10 +102,18 @@ class EditorViewModel(
     private val _state = MutableStateFlow(initial)
     val state: StateFlow<EditorState> = _state.asStateFlow()
 
+    private val _openProjectId = MutableStateFlow(if (repository == null) initial.project.id else null)
+
+    /** The project being edited, or null when none is open. */
+    val openProjectId: StateFlow<String?> = _openProjectId.asStateFlow()
+
     private val _ready = MutableStateFlow(repository == null)
 
-    /** False until the saved project has been restored. */
+    /** False while no project is open or the open one is still loading. */
     val ready: StateFlow<Boolean> = _ready.asStateFlow()
+
+    /** The open project as last loaded or saved, so an unchanged project is not rewritten. */
+    private var lastSaved: Project? = null
 
     private val _messages = Channel<EditorMessage>(Channel.BUFFERED)
     val messages: Flow<EditorMessage> = _messages.receiveAsFlow()
@@ -112,16 +123,58 @@ class EditorViewModel(
     init {
         if (repository != null) {
             viewModelScope.launch {
-                repository.load()?.let { saved -> edit { it.setProject(saved) } }
-                _ready.value = true
-                // Saves once edits settle; the restored project itself is not re-saved.
+                // Saves the open project once edits settle.
                 state.map { it.project }
                     .distinctUntilChanged()
-                    .drop(1)
                     .debounce(AUTOSAVE_DELAY_MS)
-                    .collect { repository.save(it) }
+                    .collect { project -> if (needsSaving(project)) save(project) }
             }
         }
+    }
+
+    /** Opens project [id] from the repository with a fresh undo history; the open one is saved first. */
+    fun open(id: String) {
+        val repository = repository ?: return
+        if (_openProjectId.value == id) return
+        close()
+        _openProjectId.value = id
+        viewModelScope.launch {
+            val project = repository.load(id)
+            // Another project may have been opened, or this one closed, meanwhile.
+            if (_openProjectId.value != id) return@launch
+            val opened = try {
+                project?.let { EditorState().setProject(it) }
+            } catch (e: InvalidProjectException) {
+                null
+            }
+            if (opened == null) {
+                _openProjectId.value = null
+                _messages.trySend(EditorMessage.InvalidProject)
+                return@launch
+            }
+            _state.value = opened
+            lastSaved = opened.project
+            _ready.value = true
+        }
+    }
+
+    /** Saves and closes the open project, e.g. to go back to the project list. */
+    fun close() {
+        if (repository == null) return
+        val project = _state.value.project
+        val save = needsSaving(project)
+        _openProjectId.value = null
+        _ready.value = false
+        gestureStart = null
+        _state.value = EditorState()
+        if (save) viewModelScope.launch { save(project) }
+    }
+
+    private fun needsSaving(project: Project) = _ready.value && project.id == _openProjectId.value && project != lastSaved
+
+    private suspend fun save(project: Project) {
+        lastSaved = project
+        repository?.save(project)
     }
 
     private fun edit(action: (EditorState) -> EditorState) {
@@ -167,10 +220,13 @@ class EditorViewModel(
 
     /** Saves right away, e.g. when the app goes to the background. */
     fun saveNow() {
-        val repository = repository ?: return
-        if (!_ready.value) return
         val project = _state.value.project
-        viewModelScope.launch { repository.save(project) }
+        if (repository != null && needsSaving(project)) viewModelScope.launch { save(project) }
+    }
+
+    /** Changes the frame size, e.g. from landscape to portrait. Clips keep their placement. */
+    fun setFormat(width: Int, height: Int) = edit { s ->
+        if (s.project.width == width && s.project.height == height) s else s.updateProject { it.copy(width = width, height = height) }
     }
 
     /**
