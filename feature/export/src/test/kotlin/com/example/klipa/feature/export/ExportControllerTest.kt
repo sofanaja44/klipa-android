@@ -170,4 +170,15 @@ class ExportControllerTest {
         assertEquals(ExportFailure.Storage, failure(ExportException.ERROR_CODE_MUXING_FAILED))
         assertEquals(ExportFailure.Unknown, failure(ExportException.ERROR_CODE_UNSPECIFIED))
     }
+
+    @Test
+    fun `a muxer that gives up is retried with the other one, a bad file is not`() {
+        fun retries(code: Int) = retriesWithOtherMuxer(ExportException.createForAssetLoader(IllegalStateException("Invalid Nal units"), code))
+        assertTrue(retries(ExportException.ERROR_CODE_FAILED_RUNTIME_CHECK))
+        assertTrue(retries(ExportException.ERROR_CODE_MUXING_FAILED))
+        assertFalse(retries(ExportException.ERROR_CODE_IO_FILE_NOT_FOUND))
+        assertFalse(retries(ExportException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED))
+        // Android's muxer goes first.
+        assertEquals(ExportMuxer.Platform, ExportMuxer.entries.first())
+    }
 }

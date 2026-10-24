@@ -5,13 +5,16 @@
 package com.example.klipa.feature.export
 
 import android.content.Context
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.transformer.Composition
 import androidx.media3.transformer.DefaultEncoderFactory
+import androidx.media3.transformer.DefaultMuxer
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
+import androidx.media3.transformer.FrameworkMuxer
 import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
 import androidx.media3.transformer.VideoEncoderSettings
@@ -33,12 +36,41 @@ interface ExportEngine {
     }
 }
 
-/** [ExportEngine] on Media3 Transformer: H.264 video and AAC audio in MP4. */
+/** Muxers to write the MP4 with, in the order they are tried. */
+enum class ExportMuxer {
+    /**
+     * Android's MediaMuxer. It takes whatever the device's own encoder produces; Media3's
+     * muxer rejects some encoders' H.264 output ("Invalid Nal units").
+     */
+    Platform,
+
+    /** Media3's own MP4 muxer, Transformer's default. */
+    Media3,
+}
+
+/**
+ * Whether an export that failed with [error] on one muxer is worth one more try on the
+ * other: the muxer, or a runtime check in it, gave up, not the media or the encoder.
+ */
+fun retriesWithOtherMuxer(error: ExportException): Boolean = error.errorCode in setOf(
+    ExportException.ERROR_CODE_FAILED_RUNTIME_CHECK,
+    ExportException.ERROR_CODE_MUXING_FAILED,
+    ExportException.ERROR_CODE_MUXING_APPEND,
+)
+
+/**
+ * [ExportEngine] on Media3 Transformer: H.264 video and AAC audio in MP4, written by
+ * Android's muxer first and Media3's if that one fails.
+ */
 class TransformerEngine(private val context: Context) : ExportEngine {
     private var transformer: Transformer? = null
     private val holder = ProgressHolder()
 
     override fun start(composition: Composition, output: File, videoBitrate: Int, listener: ExportEngine.Listener) {
+        start(composition, output, videoBitrate, listener, ExportMuxer.entries)
+    }
+
+    private fun start(composition: Composition, output: File, videoBitrate: Int, listener: ExportEngine.Listener, muxers: List<ExportMuxer>) {
         val encoders = DefaultEncoderFactory.Builder(context)
             .setRequestedVideoEncoderSettings(VideoEncoderSettings.Builder().setBitrate(videoBitrate).build())
             // A device that cannot encode the requested size or bitrate gets the closest it can.
@@ -48,6 +80,12 @@ class TransformerEngine(private val context: Context) : ExportEngine {
             .setVideoMimeType(MimeTypes.VIDEO_H264)
             .setAudioMimeType(MimeTypes.AUDIO_AAC)
             .setEncoderFactory(encoders)
+            .setMuxerFactory(
+                when (muxers.first()) {
+                    ExportMuxer.Platform -> FrameworkMuxer.Factory()
+                    ExportMuxer.Media3 -> DefaultMuxer.Factory()
+                },
+            )
             .addListener(object : Transformer.Listener {
                 override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                     this@TransformerEngine.transformer = null
@@ -55,8 +93,17 @@ class TransformerEngine(private val context: Context) : ExportEngine {
                 }
 
                 override fun onError(composition: Composition, exportResult: ExportResult, exportException: ExportException) {
+                    // A cancelled export reports nothing.
+                    if (this@TransformerEngine.transformer == null) return
                     this@TransformerEngine.transformer = null
-                    listener.onError(exportException)
+                    val rest = muxers.drop(1)
+                    if (rest.isNotEmpty() && retriesWithOtherMuxer(exportException)) {
+                        Log.w(TAG, "Export failed with the ${muxers.first()} muxer; trying ${rest.first()}", exportException)
+                        output.delete()
+                        start(composition, output, videoBitrate, listener, rest)
+                    } else {
+                        listener.onError(exportException)
+                    }
                 }
             })
             .build()
@@ -70,7 +117,12 @@ class TransformerEngine(private val context: Context) : ExportEngine {
     }
 
     override fun cancel() {
-        transformer?.cancel()
-        transformer = null
+        val transformer = transformer ?: return
+        this.transformer = null
+        transformer.cancel()
+    }
+
+    private companion object {
+        const val TAG = "KlipaExport"
     }
 }
